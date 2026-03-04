@@ -17,6 +17,17 @@ After completing any task, ask yourself:
 - You run a multi-step manual process → you suggest a `bin/box` subcommand that wraps it.
 - You discover a convention not yet documented → you add it to `AGENTS.md` or create a new skill.
 
+## Maintenance contracts
+
+When you add something that must be kept in sync with something else, you **must** document the contract in `AGENTS.md` and/or the relevant skill. Do **not** put agent instructions as comments in source files — they belong in agent files only. Future agents will not remember the context.
+
+Ask yourself: "If someone changes X, will they know they also need to update Y?" If not, write it down now.
+
+Examples:
+- You add a CI path filter → document in `AGENTS.md` "Adding a New Box" and in the adding-a-box skill exactly what to add to the filter.
+- You add a matrix job → document which other files reference the matrix entries.
+- You add a new top-level directory that feeds into a build → note which path filters and Containerfile COPYs must be updated.
+
 ## What to surface to the user
 
 Always mention automation opportunities explicitly at the end of your response, e.g.:
