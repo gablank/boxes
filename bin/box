@@ -7,6 +7,39 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 REGISTRY="ghcr.io"
 OWNER="gablank"
 
+# Run gh, finding it on the host or falling back to a distrobox that has it.
+# Also handles the case where gh is on the host but auth config is in a box home.
+run_gh() {
+    if command -v gh &>/dev/null; then
+        if gh auth status &>/dev/null; then
+            gh "$@"
+            return
+        fi
+        local box home gh_dir
+        for box in $(discover_boxes 2>/dev/null); do
+            home="$(grep '^home=' "$REPO_ROOT/$box/distrobox.ini" 2>/dev/null | head -1 | cut -d= -f2)"
+            gh_dir="$home/.config/gh"
+            if [[ -d "$gh_dir" && -f "$gh_dir/hosts.yml" ]]; then
+                GH_CONFIG_DIR="$gh_dir" gh "$@"
+                return
+            fi
+        done
+    fi
+    # gh not on host or not authenticated -- run it inside the first running box that has it
+    local box name status
+    for box in $(discover_boxes 2>/dev/null); do
+        name="$(get_box_name "$box")"
+        status="$(container_status "$name")"
+        if [[ "$status" == "running" ]]; then
+            distrobox enter "$name" -- gh "$@"
+            return
+        fi
+    done
+    printf "${RED}Error: gh CLI not found on host and no running box to run it in.${RESET}\n" >&2
+    printf "Install gh on the host, or start a box first (box enter <name>).\n" >&2
+    return 1
+}
+
 RED=$'\033[0;31m'
 GREEN=$'\033[0;32m'
 YELLOW=$'\033[0;33m'
@@ -236,9 +269,9 @@ cmd_images() {
     printf "${BOLD}Available versions for %s:${RESET}\n\n" "$package"
     printf "${BOLD}%-16s %-28s %s${RESET}\n" "TAG" "UPDATED" "AGE"
 
-    gh api "/users/$OWNER/packages/container/$package/versions" \
-        --paginate --jq '.[]' 2>/dev/null \
-    | jq -r '(.metadata.container.tags // [])[] as $tag | "\($tag)\t\(.updated_at)"' \
+    run_gh api "/users/$OWNER/packages/container/$package/versions" \
+        --paginate \
+        --jq '.[] | (.metadata.container.tags // [])[] as $tag | "\($tag)\t\(.updated_at)"' \
     | sort -t$'\t' -k1,1r \
     | while IFS=$'\t' read -r tag updated; do
         local age
