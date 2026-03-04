@@ -115,12 +115,12 @@ Add it to the extension install loop in `Containerfile.base`.
 1. Create `<name>/Containerfile` (FROM box-base, add specific packages, COPY `<name>/local-bin/`)
 2. Create `<name>/distrobox.ini` (follow existing pattern)
 3. Create `<name>/local-bin/.gitkeep`
-4. Add the box name to the matrix in `.github/workflows/build.yml` and the cleanup image list
-5. Add a `<name>:` entry to the `paths-filter` in the `changes` job in `.github/workflows/build.yml` covering `<name>/**`
+4. Add `box-<name>` to the cleanup image list in `.github/workflows/build.yml`
+5. In the `changes` job in `.github/workflows/build.yml`: add a `<name>:` paths-filter entry for `<name>/**`, wire the filter output into the `Compute build flags` step so it appends to the `boxes` array. The dynamic matrix (`fromJson`) handles the rest.
 6. `bin/box` auto-discovers it -- no changes needed there
 
-**CI path filter maintenance:** The `changes` job in `.github/workflows/build.yml` contains a `dorny/paths-filter` block that maps directory trees to build flags. It must be kept in sync with the repo layout:
-- New box → add a filter entry for `<name>/**`
+**CI path filter maintenance:** The `changes` job in `.github/workflows/build.yml` uses `dorny/paths-filter` to detect changes and builds a dynamic `box_matrix` JSON array consumed by `build-boxes` via `fromJson`. It must be kept in sync with the repo layout:
+- New box → add a filter entry for `<name>/**` and wire it into the `boxes` array in the `Compute build flags` step
 - New shared directory (e.g. a new top-level dir copied into all images) → add it to the `base:` filter
 - Renamed or moved directory → update the matching filter entry
 
