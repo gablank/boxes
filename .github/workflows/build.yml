@@ -16,8 +16,7 @@ jobs:
     outputs:
       date_tag: ${{ steps.meta.outputs.date_tag }}
       build_base: ${{ steps.result.outputs.build_base }}
-      build_priv: ${{ steps.result.outputs.build_priv }}
-      build_work: ${{ steps.result.outputs.build_work }}
+      box_matrix: ${{ steps.result.outputs.box_matrix }}
     steps:
       - uses: actions/checkout@v4
 
@@ -48,14 +47,12 @@ jobs:
 
           [[ "$force" == "true" ]] && base=true && priv=true && work=true
 
-          build_priv=false
-          build_work=false
-          [[ "$base" == "true" || "$priv" == "true" ]] && build_priv=true
-          [[ "$base" == "true" || "$work" == "true" ]] && build_work=true
+          boxes=()
+          [[ "$base" == "true" || "$priv" == "true" ]] && boxes+=('"priv"')
+          [[ "$base" == "true" || "$work" == "true" ]] && boxes+=('"work"')
 
           echo "build_base=$base" >> "$GITHUB_OUTPUT"
-          echo "build_priv=$build_priv" >> "$GITHUB_OUTPUT"
-          echo "build_work=$build_work" >> "$GITHUB_OUTPUT"
+          echo "box_matrix=[$(IFS=,; echo "${boxes[*]}")]" >> "$GITHUB_OUTPUT"
 
   build-base:
     needs: changes
@@ -91,17 +88,14 @@ jobs:
 
   build-boxes:
     needs: [changes, build-base]
-    if: |
-      always() && !failure() && !cancelled() &&
-      ((matrix.box == 'priv' && needs.changes.outputs.build_priv == 'true') ||
-       (matrix.box == 'work' && needs.changes.outputs.build_work == 'true'))
+    if: always() && !failure() && !cancelled() && needs.changes.outputs.box_matrix != '[]'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     strategy:
       matrix:
-        box: [priv, work]
+        box: ${{ fromJson(needs.changes.outputs.box_matrix) }}
     steps:
       - uses: actions/checkout@v4
 
