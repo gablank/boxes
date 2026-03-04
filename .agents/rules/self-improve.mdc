@@ -1,0 +1,25 @@
+---
+description: Agents must proactively self-improve agent docs and flag automation opportunities
+alwaysApply: true
+---
+
+# Proactive Self-Improvement
+
+After completing any task, ask yourself:
+
+1. **Is something missing from agent docs?** If a skill, rule, or section of `AGENTS.md` is absent, incomplete, or misleading — fix it now, not only when the code changes.
+2. **Could this be automated?** If you performed a repetitive or manual step, mention a concrete improvement: a new `bin/box` command, a CI job, a script in `local-bin/`, etc.
+3. **Is an existing skill or rule stale?** If you noticed a skill or rule that no longer reflects reality, update it as part of the task.
+
+## What this looks like in practice
+
+- You add a package → you notice the `containerfile-conventions` skill doesn't mention the `--needed` flag → you add it.
+- You run a multi-step manual process → you suggest a `bin/box` subcommand that wraps it.
+- You discover a convention not yet documented → you add it to `AGENTS.md` or create a new skill.
+
+## What to surface to the user
+
+Always mention automation opportunities explicitly at the end of your response, e.g.:
+> "Opportunity: this could be automated with a `box sync` command — want me to add it?"
+
+Do not silently skip these observations.

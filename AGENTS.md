@@ -11,6 +11,16 @@ When you make changes to this repository, you MUST update the agent documentatio
 
 Examples: if you add a new box, update the repo structure listing. If you change how the CLI works, update the bin/box CLI section. If you add a new convention, document it. Agent documentation that is out of date is worse than no documentation.
 
+## Proactive Self-Improvement
+
+Beyond keeping docs in sync, agents must **proactively** improve this repository and its agent files:
+
+- If a skill, rule, or section of `AGENTS.md` is missing or stale — fix it, even if it wasn't part of the current task.
+- After completing any task, look for automation opportunities: a missing `bin/box` command, a useful CI job, a script that belongs in `local-bin/`. Mention these to the user explicitly.
+- If you performed a manual multi-step process, suggest how to automate it.
+
+This is enforced by `.cursor/rules/self-improve.mdc`.
+
 ## PUBLIC REPOSITORY -- READ THIS FIRST
 
 This repository is **public on GitHub**. Every file is visible to the entire internet.
