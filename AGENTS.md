@@ -4,12 +4,13 @@ This file provides instructions for AI coding agents working on this repository.
 
 ## Keeping Agent Documentation Up to Date
 
-When you make changes to this repository, you MUST update the agent documentation to reflect those changes. This includes:
+When you make changes to this repository, you MUST update all documentation to reflect those changes. This includes:
 
+- **`README.md`** -- the user-facing doc; if behavior, commands, or conventions change, it must be updated too
 - **`AGENTS.md`** (this file) -- update the repository structure, conventions, or any section that is affected by your changes
 - **`.cursor/rules/*.mdc`** -- update any Cursor rules whose content is invalidated by your changes
 
-Examples: if you add a new box, update the repo structure listing. If you change how the CLI works, update the bin/box CLI section. If you add a new convention, document it. Agent documentation that is out of date is worse than no documentation.
+Examples: if you add a new box, update the repo structure listing. If you change how the CLI works, update the bin/box CLI section *and* the README command table. If you change the image tag format, update every doc that mentions it. Outdated docs are worse than no docs.
 
 ## Proactive Self-Improvement
 

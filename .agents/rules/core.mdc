@@ -7,6 +7,6 @@ alwaysApply: true
 
 This repo is PUBLIC. NEVER add secrets, tokens, credentials, personal data, private keys, or internal hostnames. Use runtime env vars for secrets.
 
-# Maintain Agent Docs
+# Maintain Docs
 
-When you change the repo, update `AGENTS.md` and any affected `.cursor/skills/*/SKILL.md` or `.cursor/rules/` to stay in sync. Outdated agent docs are worse than none.
+When you change the repo, update `README.md`, `AGENTS.md`, and any affected `.cursor/skills/*/SKILL.md` or `.cursor/rules/` to stay in sync. `README.md` is the user-facing doc — if behavior, commands, or conventions change, it must be updated too. Outdated docs are worse than none.
