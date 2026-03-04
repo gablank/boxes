@@ -59,10 +59,11 @@ setup.sh                    One-shot setup script for new users / forks
 
 ## Image Build Flow
 
-1. GitHub Actions builds `ghcr.io/<repo-owner>/box-base` from `Containerfile.base`
-2. Then builds `ghcr.io/<repo-owner>/box-priv` and `ghcr.io/<repo-owner>/box-work` in parallel; CI passes `BASE_IMAGE=ghcr.io/<repo-owner>/box-base:latest` as a build arg
-3. All images are tagged `latest` + `YYYY-MM-DDTHHMM` (e.g. `2026-03-04T0300`, UTC) and pushed to ghcr.io
-4. Locally, `box rebuild <name>` pulls the latest image and recreates the container
+1. A `changes` job detects which paths changed and computes the `date_tag`; on `schedule`/`workflow_dispatch` all flags are forced true
+2. `build-base` runs only if `Containerfile.base`, `scripts/`, or `local-bin/` changed
+3. `build-priv` and `build-work` each run only if base changed OR their own directory changed; they run in parallel after `build-base`
+4. All images are tagged `latest` + `YYYY-MM-DDTHHMM` (e.g. `2026-03-04T0300`, UTC) and pushed to ghcr.io
+5. Locally, `box rebuild <name>` pulls the latest image and recreates the container
 
 `<repo-owner>` is derived from `github.repository_owner` in CI — no hardcoding, so forks work out of the box.
 
@@ -115,4 +116,12 @@ Add it to the extension install loop in `Containerfile.base`.
 2. Create `<name>/distrobox.ini` (follow existing pattern)
 3. Create `<name>/local-bin/.gitkeep`
 4. Add the box name to the matrix in `.github/workflows/build.yml` and the cleanup image list
-5. `bin/box` auto-discovers it -- no changes needed there
+5. Add a `<name>:` entry to the `paths-filter` in the `changes` job in `.github/workflows/build.yml` covering `<name>/**`
+6. `bin/box` auto-discovers it -- no changes needed there
+
+**CI path filter maintenance:** The `changes` job in `.github/workflows/build.yml` contains a `dorny/paths-filter` block that maps directory trees to build flags. It must be kept in sync with the repo layout:
+- New box → add a filter entry for `<name>/**`
+- New shared directory (e.g. a new top-level dir copied into all images) → add it to the `base:` filter
+- Renamed or moved directory → update the matching filter entry
+
+Whenever you add something to CI that is gated by a path filter, document what must be updated here and in the relevant skill.

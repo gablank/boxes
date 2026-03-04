@@ -122,7 +122,7 @@ See [AGENTS.md](AGENTS.md) — the "Adding a New Box" section has step-by-step i
 
 ## Image Build
 
-Images are built by GitHub Actions on every push to `main` and nightly at 03:00 UTC.
+Images are built by GitHub Actions on every push to `main` and nightly at 03:00 UTC. Builds are skipped when the relevant files haven't changed — base only rebuilds if `Containerfile.base`, `scripts/`, or `local-bin/` changed; each box only rebuilds if base or its own directory changed. Scheduled and manual runs always rebuild everything.
 
 - `ghcr.io/<owner>/box-base` — base image with all shared packages
 - `ghcr.io/<owner>/box-priv` — privbox image

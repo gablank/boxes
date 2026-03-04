@@ -11,19 +11,61 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
-  build-base:
+  changes:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     outputs:
       date_tag: ${{ steps.meta.outputs.date_tag }}
+      build_base: ${{ steps.result.outputs.build_base }}
+      build_priv: ${{ steps.result.outputs.build_priv }}
+      build_work: ${{ steps.result.outputs.build_work }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Set build metadata
         id: meta
         run: echo "date_tag=$(date -u +%Y-%m-%dT%H%M)" >> "$GITHUB_OUTPUT"
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            base:
+              - 'Containerfile.base'
+              - 'scripts/**'
+              - 'local-bin/**'
+            priv:
+              - 'priv/**'
+            work:
+              - 'work/**'
+
+      - name: Compute build flags
+        id: result
+        run: |
+          force="${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}"
+          base="${{ steps.filter.outputs.base }}"
+          priv="${{ steps.filter.outputs.priv }}"
+          work="${{ steps.filter.outputs.work }}"
+
+          [[ "$force" == "true" ]] && base=true && priv=true && work=true
+
+          build_priv=false
+          build_work=false
+          [[ "$base" == "true" || "$priv" == "true" ]] && build_priv=true
+          [[ "$base" == "true" || "$work" == "true" ]] && build_work=true
+
+          echo "build_base=$base" >> "$GITHUB_OUTPUT"
+          echo "build_priv=$build_priv" >> "$GITHUB_OUTPUT"
+          echo "build_work=$build_work" >> "$GITHUB_OUTPUT"
+
+  build-base:
+    needs: changes
+    if: needs.changes.outputs.build_base == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
 
       - uses: docker/login-action@v3
         with:
@@ -40,15 +82,19 @@ jobs:
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/box-base:latest
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/box-base:${{ steps.meta.outputs.date_tag }}
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/box-base:${{ needs.changes.outputs.date_tag }}
           build-args: |
-            BUILD_DATE=${{ steps.meta.outputs.date_tag }}
+            BUILD_DATE=${{ needs.changes.outputs.date_tag }}
             BUILD_SHA=${{ github.sha }}
           cache-from: type=gha,scope=base
           cache-to: type=gha,mode=max,scope=base
 
   build-boxes:
-    needs: build-base
+    needs: [changes, build-base]
+    if: |
+      always() && !failure() && !cancelled() &&
+      ((matrix.box == 'priv' && needs.changes.outputs.build_priv == 'true') ||
+       (matrix.box == 'work' && needs.changes.outputs.build_work == 'true'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -74,16 +120,17 @@ jobs:
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/box-${{ matrix.box }}:latest
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/box-${{ matrix.box }}:${{ needs.build-base.outputs.date_tag }}
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/box-${{ matrix.box }}:${{ needs.changes.outputs.date_tag }}
           build-args: |
-            BUILD_DATE=${{ needs.build-base.outputs.date_tag }}
+            BUILD_DATE=${{ needs.changes.outputs.date_tag }}
             BUILD_SHA=${{ github.sha }}
             BASE_IMAGE=${{ env.REGISTRY }}/${{ github.repository_owner }}/box-base:latest
           cache-from: type=gha,scope=${{ matrix.box }}
           cache-to: type=gha,mode=max,scope=${{ matrix.box }}
 
   cleanup:
-    needs: build-boxes
+    needs: [build-base, build-boxes]
+    if: always() && !cancelled()
     runs-on: ubuntu-latest
     permissions:
       packages: write
