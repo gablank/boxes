@@ -15,7 +15,8 @@ RUN pacman -S --noconfirm --needed \
     terraform \
     docker docker-compose \
     pipewire libpipewire \
-    github-cli
+    github-cli \
+    git-absorb
 
 # makepkg cannot run as root
 RUN useradd -m -G wheel builduser && \
