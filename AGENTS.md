@@ -86,6 +86,11 @@ Add it to the extension install loop in `Containerfile.base`.
 - Use `local` for function-scoped variables
 - No comments explaining obvious code
 
+## distrobox.ini Conventions
+
+- `home`, `volume`, and `init_hooks` use `${HOME}`, `${XDG_RUNTIME_DIR}`, and `${USER}` — never hardcode paths or usernames
+- `distrobox assemble` expands env vars at runtime, so these resolve correctly for any user
+
 ## Adding a New Box
 
 1. Create `<name>/Containerfile` (FROM box-base, add specific packages, COPY `<name>/local-bin/`)
