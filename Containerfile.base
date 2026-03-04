@@ -1,0 +1,99 @@
+FROM archlinux:latest
+
+ARG BUILD_DATE=unknown
+ARG BUILD_SHA=unknown
+
+RUN pacman-key --init && \
+    pacman-key --populate archlinux && \
+    pacman -Syu --noconfirm
+
+RUN pacman -S --noconfirm --needed \
+    base-devel glib2 git openssh sudo ca-certificates curl wget gnupg \
+    zsh tmux btop \
+    nano vim \
+    uv mise usage \
+    terraform \
+    docker docker-compose \
+    pipewire libpipewire \
+    github-cli
+
+# makepkg cannot run as root
+RUN useradd -m -G wheel builduser && \
+    printf 'builduser ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/builduser
+
+USER builduser
+WORKDIR /tmp/yay-build
+RUN git clone https://aur.archlinux.org/yay.git . && \
+    makepkg -s --noconfirm --needed && \
+    sudo pacman -U --noconfirm ./*.pkg.tar*
+
+RUN yay -S --noconfirm --needed \
+    visual-studio-code-bin \
+    cursor-bin \
+    oh-my-zsh-git \
+    vi-vim-symlink \
+    google-chrome \
+    mongodb-tools \
+    google-cloud-cli \
+    google-cloud-cli-component-gke-gcloud-auth-plugin
+
+USER root
+WORKDIR /
+
+# Pre-install Cursor extensions to a system-wide directory.
+# Uses /usr/bin/cursor directly (before wrapper is created).
+RUN mkdir -p /opt/cursor-extensions && \
+    for ext in \
+        anysphere.cursorpyright \
+        buenon.scratchpads \
+        charliermarsh.ruff \
+        eamodio.gitlens \
+        hashicorp.terraform \
+        k--kato.intellij-idea-keybindings \
+        mads-hartmann.bash-ide-vscode \
+        ms-python.debugpy \
+        ms-python.python \
+        redhat.vscode-yaml \
+        rust-lang.rust-analyzer \
+        tamasfe.even-better-toml \
+        astral-sh.ty \
+        DavidAnson.vscode-markdownlint \
+        bierner.markdown-mermaid; \
+    do \
+        /usr/bin/cursor --no-sandbox --extensions-dir /opt/cursor-extensions \
+            --install-extension "$ext" || true; \
+    done
+
+# Wrapper so both CLI and .desktop launch use the pre-installed extensions
+RUN printf '#!/bin/sh\nexec /usr/bin/cursor --extensions-dir /opt/cursor-extensions "$@"\n' \
+        > /usr/local/bin/cursor && \
+    chmod +x /usr/local/bin/cursor
+
+RUN desktop_file=$(find /usr/share/applications -iname '*cursor*' 2>/dev/null | head -1) && \
+    if [ -n "$desktop_file" ]; then \
+        sed -i 's|\(Exec=.*cursor[^ ]*\)|\1 --extensions-dir /opt/cursor-extensions|' "$desktop_file"; \
+    fi
+
+RUN chmod u+s /usr/bin/newuidmap /usr/bin/newgidmap
+
+# Container-local xdg-open so links open in the container browser
+RUN printf '#!/bin/sh\nexec gio open "$@"\n' > /usr/local/bin/xdg-open && \
+    chmod +x /usr/local/bin/xdg-open
+
+RUN printf 'export ZSH=/usr/share/oh-my-zsh\nZSH_THEME="robbyrussell"\nplugins=(git)\nsource "$ZSH/oh-my-zsh.sh"\n' \
+        > /etc/skel/.zshrc
+
+COPY scripts/init-user.sh /usr/local/share/box-init/init-user.sh
+RUN chmod +x /usr/local/share/box-init/init-user.sh
+
+COPY local-bin/ /usr/local/bin/
+RUN chmod +x /usr/local/bin/* 2>/dev/null || true
+
+RUN printf 'build_date=%s\nbuild_sha=%s\nimage=box-base\n' \
+        "$BUILD_DATE" "$BUILD_SHA" > /etc/box-build-info
+
+RUN rm -rf /tmp/* && \
+    rm -f /etc/sudoers.d/builduser && \
+    userdel -r builduser 2>/dev/null || true && \
+    pacman -Scc --noconfirm && \
+    rm -rf /var/cache/pacman/pkg/*

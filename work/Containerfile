@@ -1,0 +1,14 @@
+FROM ghcr.io/gablank/box-base:latest
+
+ARG BUILD_DATE=unknown
+ARG BUILD_SHA=unknown
+
+RUN pacman -Syu --noconfirm --needed kubectl k9s qemu-base qemu-img glab && \
+    pacman -Scc --noconfirm && \
+    rm -rf /var/cache/pacman/pkg/*
+
+COPY work/local-bin/ /usr/local/bin/
+RUN chmod +x /usr/local/bin/* 2>/dev/null || true
+
+RUN printf 'build_date=%s\nbuild_sha=%s\nimage=box-work\n' \
+        "$BUILD_DATE" "$BUILD_SHA" > /etc/box-build-info
