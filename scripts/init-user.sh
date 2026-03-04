@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "[box-init] user init start"
+printf '[box-init] user init start\n'
 
 ensure_env() {
     local file="$1" key="$2" value="$3"
@@ -26,4 +26,4 @@ ensure_env "$HOME/.profile" DOCKER_HOST "unix:///podman.sock"
 
 chsh -s /usr/bin/zsh "$USER" >/dev/null 2>&1 || true
 
-echo "[box-init] user init done"
+printf '[box-init] user init done\n'

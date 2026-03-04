@@ -84,7 +84,8 @@ Add it to the extension install loop in `Containerfile.base`.
 - Pure bash, uses `distrobox` and `gh` CLI
 - Box argument is always the directory name (`priv`, `work`), not the container name
 - Auto-discovers boxes by scanning for `*/distrobox.ini`
-- `box rebuild` resets the `image=` line to `:latest`; `box revert` pins to a date tag
+- `box stage <box>` pulls the latest image and recreates only if the digest changed (preferred for routine updates)
+- `box rebuild <box>` resets the `image=` line to `:latest` and always recreates; `box revert` pins to a date tag
 - To add a command: add `cmd_<name>()` function, add the case in the dispatch block, update `usage()`
 
 ## Shell Script Style
@@ -100,6 +101,7 @@ Add it to the extension install loop in `Containerfile.base`.
 
 - `home`, `volume`, and `init_hooks` use `${HOME}`, `${XDG_RUNTIME_DIR}`, and `${USER}` — never hardcode paths or usernames
 - `distrobox assemble` expands env vars at runtime, so these resolve correctly for any user
+- See `.cursor/skills/distrobox-ini-conventions/SKILL.md` for the full template and command reference
 
 ## Adding a New Box
 

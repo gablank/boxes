@@ -24,7 +24,8 @@ ${BOLD}USAGE${RESET}
 ${BOLD}COMMANDS${RESET}
     list                   List all boxes with status and image tag
     enter     <box>        Enter a box
-    rebuild   <box>        Pull latest image and recreate
+    stage     <box>        Pull latest image; recreate only if image changed
+    rebuild   <box>        Pull latest image and recreate unconditionally
     rebuild-all            Rebuild all boxes
     stop      <box>        Stop a box
     rm        <box>        Remove a box
@@ -149,6 +150,24 @@ cmd_rebuild() {
     printf "${GREEN}Done.${RESET}\n"
 }
 
+cmd_stage() {
+    validate_box "$1"
+    local box="$1" name image before after
+    name="$(get_box_name "$box")"
+    image="$(get_image_line "$box")"
+    printf "${CYAN}Staging %s (%s)...${RESET}\n" "$box" "$image"
+    before="$(podman image inspect --format '{{.Id}}' "$image" 2>/dev/null || true)"
+    podman pull "$image"
+    after="$(podman image inspect --format '{{.Id}}' "$image" 2>/dev/null || true)"
+    if [[ -n "$before" && "$before" == "$after" ]]; then
+        printf "${GREEN}Already up to date — no restart needed.${RESET}\n"
+    else
+        printf "${CYAN}New image available, recreating %s...${RESET}\n" "$name"
+        distrobox assemble create --file "$REPO_ROOT/$box/distrobox.ini"
+        printf "${GREEN}Done.${RESET}\n"
+    fi
+}
+
 cmd_rebuild_all() {
     local box
     for box in $(discover_boxes); do
@@ -252,6 +271,10 @@ case "$command" in
     enter)
         [[ $# -ge 1 ]] || { printf "${RED}Usage: box enter <box>${RESET}\n" >&2; exit 1; }
         cmd_enter "$1"
+        ;;
+    stage)
+        [[ $# -ge 1 ]] || { printf "${RED}Usage: box stage <box>${RESET}\n" >&2; exit 1; }
+        cmd_stage "$1"
         ;;
     rebuild)
         [[ $# -ge 1 ]] || { printf "${RED}Usage: box rebuild <box>${RESET}\n" >&2; exit 1; }
