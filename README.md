@@ -34,8 +34,8 @@ cd boxes
 ### 2. Pull and start a box
 
 ```bash
-box stage priv    # pull privbox image and start it
-box stage work    # pull workbox image and start it
+box rebuild priv
+box rebuild work
 ```
 
 ### 3. Enter a box
@@ -51,7 +51,6 @@ box enter work
 box init      [owner]      Set image registry owner in all ini files (default: git remote)
 box list                   List all boxes with status and image tag
 box enter     <box>        Enter a box
-box stage     <box>        Pull latest image (no restart; run rebuild to apply)
 box rebuild   <box>        Pull latest image and recreate unconditionally
 box rebuild-all            Rebuild all boxes
 box stop      <box>        Stop a box
@@ -61,8 +60,6 @@ box logs      <box>        Show init log
 box images    <box>        List available image versions on ghcr.io
 box revert    <box> <tag>  Pin box to a specific image tag and recreate
 ```
-
-`box stage` is preferred for routine updates — it only recreates the container if the pulled image digest changed.
 
 ## Forking / Using Your Own Images
 
@@ -83,8 +80,8 @@ This repo is designed to be forked. When you fork and push to GitHub, CI automat
 
 4. Pull and start your boxes:
    ```bash
-   box stage priv
-   box stage work
+   box rebuild priv
+   box rebuild work
    ```
 
 If you ever need to manually re-point image URLs (e.g. after changing the remote), run:

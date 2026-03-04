@@ -90,7 +90,6 @@ Add it to the extension install loop in `Containerfile.base`.
 - Auto-discovers boxes by scanning for `*/distrobox.ini`
 - `OWNER` is auto-detected from the git remote URL (`github.com:<owner>/...`); override with `BOX_OWNER` env var
 - `box init [owner]` updates the `image=` line in all `distrobox.ini` files to use the specified (or auto-detected) owner; called automatically by `setup.sh`
-- `box stage <box>` pulls the latest image without restarting the container; run `box rebuild` to apply it
 - `box rebuild <box>` resets the `image=` line to `:latest` and always recreates; `box revert` pins to a datetime tag (format: `YYYY-MM-DDTHHMM`, e.g. `2026-03-04T0300`)
 - `box images <box>` lists available tags with a human-readable age column
 - To add a command: add `cmd_<name>()` function, add the case in the dispatch block, update `usage()`

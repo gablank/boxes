@@ -37,7 +37,6 @@ ${BOLD}COMMANDS${RESET}
     init      [owner]      Set image registry owner in all ini files (default: git remote)
     list                   List all boxes with status and image tag
     enter     <box>        Enter a box
-    stage     <box>        Pull latest image (no restart; run rebuild to apply)
     rebuild   <box>        Pull latest image and recreate unconditionally
     rebuild-all            Rebuild all boxes
     stop      <box>        Stop a box
@@ -150,7 +149,7 @@ cmd_init() {
         sed -i "s|^image=.*|image=$new_image|" "$ini"
         printf "  %-10s %s\n" "$box" "$new_image"
     done
-    printf "\n${GREEN}Done. Run 'box stage <box>' to pull, then 'box rebuild <box>' to start.${RESET}\n"
+    printf "\n${GREEN}Done. Run 'box rebuild <box>' to apply the new image.${RESET}\n"
 }
 
 cmd_list() {
@@ -184,15 +183,6 @@ cmd_rebuild() {
     set_image_tag "$box" "latest"
     distrobox assemble create --file "$REPO_ROOT/$box/distrobox.ini"
     printf "${GREEN}Done.${RESET}\n"
-}
-
-cmd_stage() {
-    validate_box "$1"
-    local box="$1" image
-    image="$(get_image_line "$box")"
-    printf "${CYAN}Staging %s (%s)...${RESET}\n" "$box" "$image"
-    podman pull "$image"
-    printf "${GREEN}Done. Run 'box rebuild %s' to apply the new image.${RESET}\n" "$box"
 }
 
 cmd_rebuild_all() {
@@ -321,10 +311,6 @@ case "$command" in
     enter)
         [[ $# -ge 1 ]] || { printf "${RED}Usage: box enter <box>${RESET}\n" >&2; exit 1; }
         cmd_enter "$1"
-        ;;
-    stage)
-        [[ $# -ge 1 ]] || { printf "${RED}Usage: box stage <box>${RESET}\n" >&2; exit 1; }
-        cmd_stage "$1"
         ;;
     rebuild)
         [[ $# -ge 1 ]] || { printf "${RED}Usage: box rebuild <box>${RESET}\n" >&2; exit 1; }

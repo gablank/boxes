@@ -35,8 +35,7 @@ init_hooks=su - ${USER} -c "bash /usr/local/share/box-init/init-user.sh"
 
 The `gablank` in the template is a placeholder/default. After `box init` runs it will be replaced with the actual owner derived from the git remote.
 
-## box stage vs box rebuild
+## box rebuild vs box revert
 
-- `box stage <box>` — pulls latest image without restarting the container. Run `box rebuild` to apply it.
-- `box rebuild <box>` — always recreates unconditionally. Use to force a clean container.
+- `box rebuild <box>` — always recreates unconditionally with the latest image.
 - `box revert <box> <tag>` — pins to a specific date tag.
