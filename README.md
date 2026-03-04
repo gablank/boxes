@@ -131,7 +131,7 @@ Images are built by GitHub Actions on every push to `main` and nightly at 03:00 
 - `ghcr.io/<owner>/box-priv` — privbox image
 - `ghcr.io/<owner>/box-work` — workbox image
 
-Each image is tagged `latest` and `YYYY-MM-DD`. Images older than 14 days are automatically deleted (keeping `latest`).
+Each image is tagged `latest` and `YYYY-MM-DDTHHMM` (UTC, e.g. `2026-03-04T0300`). Images older than 14 days are automatically deleted (keeping `latest`).
 
 ## Repository Structure
 
