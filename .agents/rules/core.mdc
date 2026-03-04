@@ -10,3 +10,8 @@ This repo is PUBLIC. NEVER add secrets, tokens, credentials, personal data, priv
 # Maintain Docs
 
 When you change the repo, update `README.md`, `AGENTS.md`, and any affected `.cursor/skills/*/SKILL.md` or `.cursor/rules/` to stay in sync. `README.md` is the user-facing doc — if behavior, commands, or conventions change, it must be updated too. Outdated docs are worse than none.
+
+# Git Commits
+
+- Split commits logically: CI changes, doc/skill updates, and rule changes each get their own commit
+- Never push, and never ask whether to push, unless the user explicitly requests it
