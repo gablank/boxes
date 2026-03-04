@@ -9,7 +9,8 @@ To add a new box (e.g., `dev`):
 
 1. Create `dev/Containerfile`:
    ```dockerfile
-   FROM ghcr.io/gablank/box-base:latest
+   ARG BASE_IMAGE=ghcr.io/gablank/box-base:latest
+   FROM ${BASE_IMAGE}
    ARG BUILD_DATE=unknown
    ARG BUILD_SHA=unknown
    # Add box-specific packages here

@@ -17,7 +17,7 @@ description: Conventions for editing Containerfiles in this repo. Use when modif
 
 ## Box-specific Containerfiles
 
-- Always `FROM ghcr.io/gablank/box-base:latest`
+- Declare `ARG BASE_IMAGE=ghcr.io/gablank/box-base:latest` followed by `FROM ${BASE_IMAGE}`. CI passes the correct fork owner's registry via this build arg.
 - Add only packages unique to that box
 - COPY `{box}/local-bin/` for box-specific scripts
 - Overwrite `/etc/box-build-info` with the box-specific image name

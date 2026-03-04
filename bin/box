@@ -5,7 +5,18 @@ SCRIPT_DIR="$(cd "$(dirname "$(realpath "$0")")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
 REGISTRY="ghcr.io"
-OWNER="gablank"
+
+_detect_owner() {
+    local remote
+    remote="$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null || true)"
+    [[ -z "$remote" ]] && return
+    remote="${remote#*github.com:}"
+    remote="${remote#*github.com/}"
+    echo "${remote%%/*}"
+}
+
+OWNER="${BOX_OWNER:-$(_detect_owner)}"
+: "${OWNER:=gablank}"
 
 # Run gh, finding it on the host or falling back to a distrobox that has it.
 # Also handles the case where gh is on the host but auth config is in a box home.
@@ -55,6 +66,7 @@ ${BOLD}USAGE${RESET}
     box <command> [arguments]
 
 ${BOLD}COMMANDS${RESET}
+    init      [owner]      Set image registry owner in all ini files (default: git remote)
     list                   List all boxes with status and image tag
     enter     <box>        Enter a box
     stage     <box>        Pull latest image; recreate only if image changed
@@ -148,6 +160,25 @@ time_ago() {
     elif (( diff < 86400 )); then echo "$(( diff / 3600 ))h ago"
     else echo "$(( diff / 86400 ))d ago"
     fi
+}
+
+cmd_init() {
+    local owner="${1:-$OWNER}"
+    if [[ -z "$owner" ]]; then
+        printf "${RED}Error: could not detect GitHub owner from git remote.${RESET}\n" >&2
+        printf "Run: box init <github-username>\n" >&2
+        exit 1
+    fi
+    printf "${CYAN}Configuring boxes for GitHub owner: %s${RESET}\n\n" "$owner"
+    local box ini tag new_image
+    for box in $(discover_boxes); do
+        ini="$REPO_ROOT/$box/distrobox.ini"
+        tag="$(get_image_tag "$box")"
+        new_image="$REGISTRY/$owner/box-$box:$tag"
+        sed -i "s|^image=.*|image=$new_image|" "$ini"
+        printf "  %-10s %s\n" "$box" "$new_image"
+    done
+    printf "\n${GREEN}Done. Run 'box stage <box>' to pull images and start boxes.${RESET}\n"
 }
 
 cmd_list() {
@@ -298,6 +329,9 @@ command="$1"
 shift
 
 case "$command" in
+    init)
+        cmd_init "${1:-}"
+        ;;
     list)
         cmd_list
         ;;

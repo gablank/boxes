@@ -17,6 +17,8 @@ description: Conventions for editing distrobox.ini files in this repo. Use when 
 
 ## Template for a new box
 
+The `image=` line is managed by `bin/box init` and `bin/box rebuild`/`revert`. Use a placeholder initially; `box init` will fill in the correct registry owner based on the git remote.
+
 ```ini
 [<boxname>]
 name=<boxname>
@@ -30,6 +32,8 @@ volume=${XDG_RUNTIME_DIR}/podman/podman.sock:/podman.sock:rw
 pre_init_hooks=export SHELL=/usr/bin/zsh
 init_hooks=su - ${USER} -c "bash /usr/local/share/box-init/init-user.sh"
 ```
+
+The `gablank` in the template is a placeholder/default. After `box init` runs it will be replaced with the actual owner derived from the git remote.
 
 ## box stage vs box rebuild
 

@@ -1,0 +1,156 @@
+# boxes
+
+Distrobox container environments built via GitHub Actions CI and managed locally with the `box` CLI.
+
+Each box is an [Arch Linux](https://archlinux.org/) container with a full development toolchain — zsh, Cursor, VS Code, Docker, Python tooling, and more — shared home directory with the host, and Podman socket passthrough so Docker tooling works inside the box.
+
+## Boxes
+
+| Box | Purpose |
+|-----|---------|
+| `priv` | Personal development environment |
+| `work` | Work environment (adds kubectl, k9s, qemu, glab) |
+
+## Quick Start
+
+### Prerequisites
+
+- [podman](https://podman.io/docs/installation)
+- [distrobox](https://distrobox.it/#installation) ≥ 1.7
+
+### 1. Clone and run setup
+
+```bash
+git clone https://github.com/gablank/boxes.git
+cd boxes
+./setup.sh
+```
+
+`setup.sh` will:
+- Check that prerequisites are installed
+- Add the repo's `bin/` directory to your PATH (writes to `~/.bashrc` / `~/.zshrc`)
+- Configure image URLs to match this repo's registry owner
+
+### 2. Pull and start a box
+
+```bash
+box stage priv    # pull privbox image and start it
+box stage work    # pull workbox image and start it
+```
+
+### 3. Enter a box
+
+```bash
+box enter priv
+box enter work
+```
+
+## The `box` CLI
+
+```
+box init      [owner]      Set image registry owner in all ini files (default: git remote)
+box list                   List all boxes with status and image tag
+box enter     <box>        Enter a box
+box stage     <box>        Pull latest image; recreate only if image changed
+box rebuild   <box>        Pull latest image and recreate unconditionally
+box rebuild-all            Rebuild all boxes
+box stop      <box>        Stop a box
+box rm        <box>        Remove a box
+box status    <box>        Show detailed box info and build metadata
+box logs      <box>        Show init log
+box images    <box>        List available image versions on ghcr.io
+box revert    <box> <tag>  Pin box to a specific image tag and recreate
+```
+
+`box stage` is preferred for routine updates — it only recreates the container if the pulled image digest changed.
+
+## Forking / Using Your Own Images
+
+This repo is designed to be forked. When you fork and push to GitHub, CI automatically builds and pushes images to your own GitHub Container Registry (`ghcr.io/<your-username>/box-*`).
+
+**Steps after forking:**
+
+1. Fork this repo on GitHub
+2. Clone your fork:
+   ```bash
+   git clone https://github.com/<your-username>/boxes.git
+   cd boxes
+   ./setup.sh
+   ```
+   `setup.sh` detects your GitHub username from the git remote and calls `box init` to update image URLs automatically.
+
+3. Push to `main` (or wait for the nightly schedule) — GitHub Actions will build and push images to your registry.
+
+4. Pull and start your boxes:
+   ```bash
+   box stage priv
+   box stage work
+   ```
+
+If you ever need to manually re-point image URLs (e.g. after changing the remote), run:
+
+```bash
+box init                        # auto-detect from git remote
+box init <github-username>      # or specify explicitly
+```
+
+## Customization
+
+### Add a package to all boxes
+
+Edit `Containerfile.base` and add the package to the `pacman -S` block (official packages) or the `yay -S` block (AUR packages):
+
+```dockerfile
+RUN pacman -S --noconfirm --needed <package>
+```
+
+### Add a package to one box
+
+Edit that box's `Containerfile` (`priv/Containerfile` or `work/Containerfile`).
+
+### Add a Cursor extension
+
+Add the extension ID to the extension install loop in `Containerfile.base`:
+
+```dockerfile
+for ext in \
+    ...
+    publisher.extension-name; \
+do \
+```
+
+### Add a new box
+
+See [AGENTS.md](AGENTS.md) — the "Adding a New Box" section has step-by-step instructions.
+
+## Image Build
+
+Images are built by GitHub Actions on every push to `main` and nightly at 03:00 UTC.
+
+- `ghcr.io/<owner>/box-base` — base image with all shared packages
+- `ghcr.io/<owner>/box-priv` — privbox image
+- `ghcr.io/<owner>/box-work` — workbox image
+
+Each image is tagged `latest` and `YYYY-MM-DD`. Images older than 14 days are automatically deleted (keeping `latest`).
+
+## Repository Structure
+
+```
+Containerfile.base      Shared base image
+priv/
+  Containerfile         Thin layer on base for privbox
+  distrobox.ini         Container definition
+  local-bin/            Scripts installed only into privbox
+work/
+  Containerfile         Thin layer on base for workbox
+  distrobox.ini         Container definition
+  local-bin/            Scripts installed only into workbox
+local-bin/              Scripts installed into ALL boxes
+scripts/
+  init-user.sh          Runtime user init (runs once on first container start)
+bin/
+  box                   Host-side CLI
+setup.sh                One-shot setup script for new users
+.github/workflows/
+  build.yml             CI build and cleanup
+```

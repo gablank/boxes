@@ -51,21 +51,24 @@ scripts/
   init-user.sh              Lightweight runtime init (ssh, zshrc, env vars, chsh)
 bin/
   box                       Host-side CLI for managing boxes
+setup.sh                    One-shot setup script for new users / forks
 .github/workflows/
   build.yml                 Nightly + on-push CI build and image cleanup
 ```
 
 ## Image Build Flow
 
-1. GitHub Actions builds `ghcr.io/gablank/box-base` from `Containerfile.base`
-2. Then builds `ghcr.io/gablank/box-priv` and `ghcr.io/gablank/box-work` in parallel (FROM box-base)
+1. GitHub Actions builds `ghcr.io/<repo-owner>/box-base` from `Containerfile.base`
+2. Then builds `ghcr.io/<repo-owner>/box-priv` and `ghcr.io/<repo-owner>/box-work` in parallel; CI passes `BASE_IMAGE=ghcr.io/<repo-owner>/box-base:latest` as a build arg
 3. All images are tagged `latest` + `YYYY-MM-DD` and pushed to ghcr.io
 4. Locally, `box rebuild <name>` pulls the latest image and recreates the container
+
+`<repo-owner>` is derived from `github.repository_owner` in CI — no hardcoding, so forks work out of the box.
 
 ## Containerfile Conventions
 
 - `Containerfile.base` installs everything shared: pacman packages, yay, AUR packages, Cursor extensions, system fixes, `scripts/init-user.sh`, and `local-bin/`
-- Box-specific Containerfiles (`priv/Containerfile`, `work/Containerfile`) are `FROM ghcr.io/gablank/box-base:latest` and add only box-specific packages and `{box}/local-bin/`
+- Box-specific Containerfiles (`priv/Containerfile`, `work/Containerfile`) declare `ARG BASE_IMAGE=ghcr.io/gablank/box-base:latest` followed by `FROM ${BASE_IMAGE}`. CI overrides `BASE_IMAGE` to point to the fork owner's registry.
 - Build context is always the repo root
 - Both base and box Containerfiles accept `BUILD_DATE` and `BUILD_SHA` build args, written to `/etc/box-build-info`
 - Always clean caches at the end of a Containerfile (`pacman -Scc --noconfirm`, `rm -rf /var/cache/pacman/pkg/*`)
@@ -84,6 +87,8 @@ Add it to the extension install loop in `Containerfile.base`.
 - Pure bash, uses `distrobox` and `gh` CLI
 - Box argument is always the directory name (`priv`, `work`), not the container name
 - Auto-discovers boxes by scanning for `*/distrobox.ini`
+- `OWNER` is auto-detected from the git remote URL (`github.com:<owner>/...`); override with `BOX_OWNER` env var
+- `box init [owner]` updates the `image=` line in all `distrobox.ini` files to use the specified (or auto-detected) owner; called automatically by `setup.sh`
 - `box stage <box>` pulls the latest image and recreates only if the digest changed (preferred for routine updates)
 - `box rebuild <box>` resets the `image=` line to `:latest` and always recreates; `box revert` pins to a date tag
 - To add a command: add `cmd_<name>()` function, add the case in the dispatch block, update `usage()`

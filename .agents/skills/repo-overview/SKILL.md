@@ -11,7 +11,7 @@ This repo defines distrobox container environments built via CI and managed loca
 
 - `Containerfile.base` - shared base image (Arch Linux + pacman + yay + AUR packages + Cursor extensions)
 - `priv/Containerfile`, `work/Containerfile` - thin layers adding box-specific packages
-- Images are built nightly by GitHub Actions and pushed to `ghcr.io/gablank/box-*`
+- Images are built nightly by GitHub Actions and pushed to `ghcr.io/<repo-owner>/box-*` (derived from `github.repository_owner`, so forks build to their own registry)
 - `distrobox.ini` files point to the pre-built images; `distrobox assemble` just pulls and creates
 - `scripts/init-user.sh` handles lightweight user-home setup at first run
 - `bin/box` is the CLI management tool (rebuild, enter, revert, images, etc.)
