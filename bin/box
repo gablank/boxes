@@ -18,38 +18,6 @@ _detect_owner() {
 OWNER="${BOX_OWNER:-$(_detect_owner)}"
 : "${OWNER:=gablank}"
 
-# Run gh, finding it on the host or falling back to a distrobox that has it.
-# Also handles the case where gh is on the host but auth config is in a box home.
-run_gh() {
-    if command -v gh &>/dev/null; then
-        if gh auth status &>/dev/null; then
-            gh "$@"
-            return
-        fi
-        local box home gh_dir
-        for box in $(discover_boxes 2>/dev/null); do
-            home="$(grep '^home=' "$REPO_ROOT/$box/distrobox.ini" 2>/dev/null | head -1 | cut -d= -f2)"
-            gh_dir="$home/.config/gh"
-            if [[ -d "$gh_dir" && -f "$gh_dir/hosts.yml" ]]; then
-                GH_CONFIG_DIR="$gh_dir" gh "$@"
-                return
-            fi
-        done
-    fi
-    # gh not on host or not authenticated -- run it inside the first running box that has it
-    local box name status
-    for box in $(discover_boxes 2>/dev/null); do
-        name="$(get_box_name "$box")"
-        status="$(container_status "$name")"
-        if [[ "$status" == "running" ]]; then
-            distrobox enter "$name" -- gh "$@"
-            return
-        fi
-    done
-    printf "${RED}Error: gh CLI not found on host and no running box to run it in.${RESET}\n" >&2
-    printf "Install gh on the host, or start a box first (box enter <name>).\n" >&2
-    return 1
-}
 
 RED=$'\033[0;31m'
 GREEN=$'\033[0;32m'
@@ -69,7 +37,7 @@ ${BOLD}COMMANDS${RESET}
     init      [owner]      Set image registry owner in all ini files (default: git remote)
     list                   List all boxes with status and image tag
     enter     <box>        Enter a box
-    stage     <box>        Pull latest image; recreate only if image changed
+    stage     <box>        Pull latest image (no restart; run rebuild to apply)
     rebuild   <box>        Pull latest image and recreate unconditionally
     rebuild-all            Rebuild all boxes
     stop      <box>        Stop a box
@@ -150,8 +118,12 @@ container_status() {
 
 time_ago() {
     local ts="$1"
+    # Normalize YYYY-MM-DDTHHMM → "YYYY-MM-DD HH:MM" for date -d
+    if [[ "$ts" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{4}$ ]]; then
+        ts="${ts:0:10} ${ts:11:2}:${ts:13:2}"
+    fi
     local then_epoch now_epoch diff
-    then_epoch="$(date -d "$ts" +%s 2>/dev/null)" || { echo "$ts"; return; }
+    then_epoch="$(date -d "$ts" +%s 2>/dev/null)" || { echo "$1"; return; }
     now_epoch="$(date +%s)"
     diff=$(( now_epoch - then_epoch ))
 
@@ -178,7 +150,7 @@ cmd_init() {
         sed -i "s|^image=.*|image=$new_image|" "$ini"
         printf "  %-10s %s\n" "$box" "$new_image"
     done
-    printf "\n${GREEN}Done. Run 'box stage <box>' to pull images and start boxes.${RESET}\n"
+    printf "\n${GREEN}Done. Run 'box stage <box>' to pull, then 'box rebuild <box>' to start.${RESET}\n"
 }
 
 cmd_list() {
@@ -216,20 +188,11 @@ cmd_rebuild() {
 
 cmd_stage() {
     validate_box "$1"
-    local box="$1" name image before after
-    name="$(get_box_name "$box")"
+    local box="$1" image
     image="$(get_image_line "$box")"
     printf "${CYAN}Staging %s (%s)...${RESET}\n" "$box" "$image"
-    before="$(podman image inspect --format '{{.Id}}' "$image" 2>/dev/null || true)"
     podman pull "$image"
-    after="$(podman image inspect --format '{{.Id}}' "$image" 2>/dev/null || true)"
-    if [[ -n "$before" && "$before" == "$after" ]]; then
-        printf "${GREEN}Already up to date — no restart needed.${RESET}\n"
-    else
-        printf "${CYAN}New image available, recreating %s...${RESET}\n" "$name"
-        distrobox assemble create --file "$REPO_ROOT/$box/distrobox.ini"
-        printf "${GREEN}Done.${RESET}\n"
-    fi
+    printf "${GREEN}Done. Run 'box rebuild %s' to apply the new image.${RESET}\n" "$box"
 }
 
 cmd_rebuild_all() {
@@ -295,20 +258,40 @@ cmd_logs() {
 cmd_images() {
     validate_box "$1"
     local box="$1"
-    local package="box-${box}"
+    local repo="$OWNER/box-$box"
 
-    printf "${BOLD}Available versions for %s:${RESET}\n\n" "$package"
-    printf "${BOLD}%-16s %-28s %s${RESET}\n" "TAG" "UPDATED" "AGE"
+    local token
+    token="$(curl -sf \
+        "https://$REGISTRY/token?scope=repository:${repo}:pull&service=ghcr.io" \
+        | grep -o '"token":"[^"]*"' | cut -d'"' -f4)"
+    if [[ -z "$token" ]]; then
+        printf "${RED}Error: could not get registry token for %s${RESET}\n" "$repo" >&2
+        exit 1
+    fi
 
-    run_gh api "/users/$OWNER/packages/container/$package/versions" \
-        --paginate \
-        --jq '.[] | (.metadata.container.tags // [])[] as $tag | "\($tag)\t\(.updated_at)"' \
-    | sort -t$'\t' -k1,1r \
-    | while IFS=$'\t' read -r tag updated; do
-        local age
-        age="$(time_ago "$updated")"
-        printf "%-16s %-28s %s\n" "$tag" "${updated%%T*}" "$age"
-    done
+    local tags_json
+    tags_json="$(curl -sf \
+        -H "Authorization: Bearer $token" \
+        "https://$REGISTRY/v2/${repo}/tags/list")"
+
+    local date_tags latest_date
+    date_tags="$(printf '%s' "$tags_json" \
+        | grep -o '"[0-9][^"]*"' | tr -d '"' | sort -r)"
+    latest_date="$(printf '%s' "$date_tags" | head -1)"
+
+    printf "${BOLD}Available versions for box-%s:${RESET}\n\n" "$box"
+    printf "${BOLD}%-24s %s${RESET}\n" "TAG" "AGE"
+
+    if printf '%s' "$tags_json" | grep -q '"latest"'; then
+        local resolves=""
+        [[ -n "$latest_date" ]] && resolves="→ $(time_ago "$latest_date")"
+        printf "%-24s %s\n" "latest" "$resolves"
+    fi
+
+    while IFS= read -r tag; do
+        [[ -z "$tag" ]] && continue
+        printf "%-24s %s\n" "$tag" "$(time_ago "$tag")"
+    done <<< "$date_tags"
 }
 
 cmd_revert() {

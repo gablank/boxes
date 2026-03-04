@@ -7,7 +7,7 @@ description: Conventions for the bin/box CLI tool. Use when modifying bin/box, a
 
 ## Design principles
 
-- Pure bash, no external dependencies beyond `distrobox`, `gh`, and standard coreutils
+- Pure bash, no external dependencies beyond `distrobox`, `curl`, and standard coreutils; no `gh` CLI required
 - Resolves repo root from its own location so it works from any working directory
 - Auto-discovers boxes by scanning for `*/distrobox.ini` in the repo root
 - The box argument is always the directory name (`priv`, `work`), not the container name (`privbox`, `workbox`)
@@ -15,7 +15,8 @@ description: Conventions for the bin/box CLI tool. Use when modifying bin/box, a
 ## Image tag management
 
 - `box rebuild` always resets the `image=` line to `:latest`
-- `box revert` pins to a specific `:YYYY-MM-DD` tag
+- `box revert` pins to a specific `:YYYY-MM-DDTHHMM` tag (e.g. `2026-03-04T0300`); old `YYYY-MM-DD` tags are still supported
+- `box images <box>` lists available tags with a human-readable age column (uses `time_ago()`)
 - The `image=` line in distrobox.ini is managed by the tool; manual edits are fine but will be overwritten on next rebuild/revert
 
 ## Adding a new command

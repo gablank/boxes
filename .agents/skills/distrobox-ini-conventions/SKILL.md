@@ -37,6 +37,6 @@ The `gablank` in the template is a placeholder/default. After `box init` runs it
 
 ## box stage vs box rebuild
 
-- `box stage <box>` — pulls latest image; recreates only if the image digest changed. Use for routine updates.
+- `box stage <box>` — pulls latest image without restarting the container. Run `box rebuild` to apply it.
 - `box rebuild <box>` — always recreates unconditionally. Use to force a clean container.
 - `box revert <box> <tag>` — pins to a specific date tag.

@@ -51,7 +51,7 @@ box enter work
 box init      [owner]      Set image registry owner in all ini files (default: git remote)
 box list                   List all boxes with status and image tag
 box enter     <box>        Enter a box
-box stage     <box>        Pull latest image; recreate only if image changed
+box stage     <box>        Pull latest image (no restart; run rebuild to apply)
 box rebuild   <box>        Pull latest image and recreate unconditionally
 box rebuild-all            Rebuild all boxes
 box stop      <box>        Stop a box

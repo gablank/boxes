@@ -60,7 +60,7 @@ setup.sh                    One-shot setup script for new users / forks
 
 1. GitHub Actions builds `ghcr.io/<repo-owner>/box-base` from `Containerfile.base`
 2. Then builds `ghcr.io/<repo-owner>/box-priv` and `ghcr.io/<repo-owner>/box-work` in parallel; CI passes `BASE_IMAGE=ghcr.io/<repo-owner>/box-base:latest` as a build arg
-3. All images are tagged `latest` + `YYYY-MM-DD` and pushed to ghcr.io
+3. All images are tagged `latest` + `YYYY-MM-DDTHHMM` (e.g. `2026-03-04T0300`, UTC) and pushed to ghcr.io
 4. Locally, `box rebuild <name>` pulls the latest image and recreates the container
 
 `<repo-owner>` is derived from `github.repository_owner` in CI — no hardcoding, so forks work out of the box.
@@ -84,13 +84,14 @@ Add it to the extension install loop in `Containerfile.base`.
 
 ## bin/box CLI
 
-- Pure bash, uses `distrobox` and `gh` CLI
+- Pure bash, uses `distrobox` and `curl`; no `gh` CLI required
 - Box argument is always the directory name (`priv`, `work`), not the container name
 - Auto-discovers boxes by scanning for `*/distrobox.ini`
 - `OWNER` is auto-detected from the git remote URL (`github.com:<owner>/...`); override with `BOX_OWNER` env var
 - `box init [owner]` updates the `image=` line in all `distrobox.ini` files to use the specified (or auto-detected) owner; called automatically by `setup.sh`
-- `box stage <box>` pulls the latest image and recreates only if the digest changed (preferred for routine updates)
-- `box rebuild <box>` resets the `image=` line to `:latest` and always recreates; `box revert` pins to a date tag
+- `box stage <box>` pulls the latest image without restarting the container; run `box rebuild` to apply it
+- `box rebuild <box>` resets the `image=` line to `:latest` and always recreates; `box revert` pins to a datetime tag (format: `YYYY-MM-DDTHHMM`, e.g. `2026-03-04T0300`)
+- `box images <box>` lists available tags with a human-readable age column
 - To add a command: add `cmd_<name>()` function, add the case in the dispatch block, update `usage()`
 
 ## Shell Script Style
