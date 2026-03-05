@@ -44,6 +44,7 @@ ${BOLD}COMMANDS${RESET}
     status    <box>        Show detailed box info and build metadata
     logs      <box>        Show init log
     images    <box>        List available image versions on ghcr.io
+    pull      <box> [tag]  Pull image without rebuilding (default: current tag in ini)
     revert    <box> <tag>  Pin box to a specific image tag and recreate
 
 ${BOLD}BOXES${RESET}
@@ -284,6 +285,19 @@ cmd_images() {
     done <<< "$date_tags"
 }
 
+cmd_pull() {
+    validate_box "$1"
+    local box="$1" tag="${2:-}"
+    local image
+    image="$(get_image_line "$box")"
+    if [[ -n "$tag" ]]; then
+        image="${image%:*}:${tag}"
+    fi
+    printf "${CYAN}Pulling %s...${RESET}\n" "$image"
+    podman pull "$image"
+    printf "${GREEN}Done.${RESET}\n"
+}
+
 cmd_revert() {
     validate_box "$1"
     local box="$1" tag="$2"
@@ -338,6 +352,10 @@ case "$command" in
     images)
         [[ $# -ge 1 ]] || { printf "${RED}Usage: box images <box>${RESET}\n" >&2; exit 1; }
         cmd_images "$1"
+        ;;
+    pull)
+        [[ $# -ge 1 ]] || { printf "${RED}Usage: box pull <box> [tag]${RESET}\n" >&2; exit 1; }
+        cmd_pull "$1" "${2:-}"
         ;;
     revert)
         [[ $# -ge 2 ]] || { printf "${RED}Usage: box revert <box> <tag>${RESET}\n" >&2; exit 1; }

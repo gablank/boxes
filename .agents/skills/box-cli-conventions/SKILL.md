@@ -17,6 +17,7 @@ description: Conventions for the bin/box CLI tool. Use when modifying bin/box, a
 - `box rebuild` always resets the `image=` line to `:latest`
 - `box revert` pins to a specific `:YYYY-MM-DDTHHMM` tag (e.g. `2026-03-04T0300`); old `YYYY-MM-DD` tags are still supported
 - `box images <box>` lists available tags with a human-readable age column (uses `time_ago()`)
+- `box pull <box> [tag]` pulls the image via `podman pull` without touching the container; uses the tag currently in the ini if none specified
 - The `image=` line in distrobox.ini is managed by the tool; manual edits are fine but will be overwritten on next rebuild/revert
 
 ## Adding a new command
