@@ -249,6 +249,7 @@ cmd_logs() {
     validate_box "$1"
     local box="$1" home
     home="$(grep '^home=' "$REPO_ROOT/$box/distrobox.ini" | head -1 | cut -d= -f2)"
+    home="$(eval echo "$home")"
     local logfile="$home/.box-bootstrap.log"
     if [[ -f "$logfile" ]]; then
         cat "$logfile"
