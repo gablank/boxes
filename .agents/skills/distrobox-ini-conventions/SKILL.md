@@ -5,7 +5,7 @@ description: Conventions for editing distrobox.ini files in this repo. Use when 
 
 # distrobox.ini Conventions
 
-`distrobox assemble` expands `${VAR}` environment variables at runtime. Always use env vars for anything user- or machine-specific — never hardcode.
+`distrobox assemble` expands `${VAR}` environment variables at runtime for host-side fields. Always use env vars for anything user- or machine-specific — never hardcode.
 
 ## Required env var substitutions
 
@@ -13,7 +13,11 @@ description: Conventions for editing distrobox.ini files in this repo. Use when 
 |-------|-----|-----|
 | `home=` | `${HOME}/distrobox/<box>/home` | `/home/alice/distrobox/...` |
 | `volume=` | `${XDG_RUNTIME_DIR}/podman/podman.sock:/podman.sock:rw` | `/run/user/1000/...` |
-| `init_hooks=` | `su - ${USER} -c "..."` | `su - alice -c "..."` |
+| `init_hooks=` | `su - ${container_user_name} -c "..."` | `su - ${USER} -c "..."` or `su - alice -c "..."` |
+
+### Why `${container_user_name}` and not `${USER}`
+
+`init_hooks` are evaluated inside the container by `distrobox-init` via `eval ${init_hook}`. At that point `/etc/profile.d/distrobox_profile.sh` has not been sourced, so `USER` is **unbound** (triggering `set -u` errors). `container_user_name` is a shell variable set by `distrobox-init` before the eval and is guaranteed to be in scope.
 
 ## Template for a new box
 
@@ -30,7 +34,7 @@ start_now=true
 init=false
 volume=${XDG_RUNTIME_DIR}/podman/podman.sock:/podman.sock:rw
 pre_init_hooks=export SHELL=/usr/bin/zsh
-init_hooks=su - ${USER} -c "bash /usr/local/share/box-init/init-user.sh"
+init_hooks=su - ${container_user_name} -c "bash /usr/local/share/box-init/init-user.sh"
 ```
 
 The `gablank` in the template is a placeholder/default. After `box init` runs it will be replaced with the actual owner derived from the git remote.

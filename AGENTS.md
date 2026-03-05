@@ -113,8 +113,9 @@ Add it to the extension install loop in `Containerfile.base`.
 
 ## distrobox.ini Conventions
 
-- `home`, `volume`, and `init_hooks` use `${HOME}`, `${XDG_RUNTIME_DIR}`, and `${USER}` — never hardcode paths or usernames
-- `distrobox assemble` expands env vars at runtime, so these resolve correctly for any user
+- `home` and `volume` use `${HOME}` and `${XDG_RUNTIME_DIR}` — expanded by distrobox on the host, never hardcode paths
+- `init_hooks` use `${container_user_name}` (a distrobox-init shell variable guaranteed in scope at eval time) — **not** `${USER}`, which is unbound when init_hooks run inside the container
+- `distrobox assemble` expands host-side env vars at runtime, so `${HOME}` and `${XDG_RUNTIME_DIR}` resolve correctly for any user
 - See `.cursor/skills/distrobox-ini-conventions/SKILL.md` for the full template and command reference
 
 ## Adding a New Box
