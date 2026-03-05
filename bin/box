@@ -34,18 +34,17 @@ ${BOLD}USAGE${RESET}
     box <command> [arguments]
 
 ${BOLD}COMMANDS${RESET}
-    init      [owner]      Set image registry owner in all ini files (default: git remote)
-    list                   List all boxes with status and image tag
-    enter     <box>        Enter a box
-    rebuild   <box>        Pull latest image and recreate unconditionally
-    rebuild-all            Rebuild all boxes
-    stop      <box>        Stop a box
-    rm        <box>        Remove a box
-    status    <box>        Show detailed box info and build metadata
-    logs      <box>        Show init log
-    images    <box>        List available image versions on ghcr.io
-    pull      <box> [tag]  Pull image without rebuilding (default: current tag in ini)
-    revert    <box> <tag>  Pin box to a specific image tag and recreate
+    init        [owner]      Set image registry owner in all ini files (default: git remote)
+    list                     List all boxes with status and image tag
+    enter       <box>        Enter a box
+    set-image   <box> [tag]  Set the image tag in the ini (default: latest)
+    assemble    <box>        Create/recreate box from current ini
+    assemble-all             Assemble all boxes
+    pull        <box> [tag]  Pull image without rebuilding (default: current tag in ini)
+    stop        <box>        Stop a box
+    status      <box>        Show detailed box info and build metadata
+    logs        <box>        Show init log
+    images      <box>        List available image versions on ghcr.io
 
 ${BOLD}BOXES${RESET}
 $(discover_boxes_for_help)
@@ -150,7 +149,7 @@ cmd_init() {
         sed -i "s|^image=.*|image=$new_image|" "$ini"
         printf "  %-10s %s\n" "$box" "$new_image"
     done
-    printf "\n${GREEN}Done. Run 'box rebuild <box>' to apply the new image.${RESET}\n"
+    printf "\n${GREEN}Done. Run 'box assemble <box>' to apply the new image.${RESET}\n"
 }
 
 cmd_list() {
@@ -176,22 +175,41 @@ cmd_enter() {
     exec distrobox enter "$name"
 }
 
-cmd_rebuild() {
+cmd_set_image() {
+    validate_box "$1"
+    local box="$1" tag="${2:-latest}"
+    set_image_tag "$box" "$tag"
+    printf "${GREEN}Image for %s set to: %s${RESET}\n" "$box" "$(get_image_line "$box")"
+}
+
+cmd_assemble() {
     validate_box "$1"
     local box="$1" name
     name="$(get_box_name "$box")"
-    printf "${CYAN}Rebuilding %s (%s) with latest image...${RESET}\n" "$box" "$name"
-    set_image_tag "$box" "latest"
+    printf "${CYAN}Assembling %s (%s) from %s...${RESET}\n" "$box" "$name" "$(get_image_line "$box")"
     distrobox assemble create --file "$REPO_ROOT/$box/distrobox.ini"
     printf "${GREEN}Done.${RESET}\n"
 }
 
-cmd_rebuild_all() {
+cmd_assemble_all() {
     local box
     for box in $(discover_boxes); do
-        cmd_rebuild "$box"
+        cmd_assemble "$box"
         echo ""
     done
+}
+
+cmd_pull() {
+    validate_box "$1"
+    local box="$1" tag="${2:-}"
+    local image
+    image="$(get_image_line "$box")"
+    if [[ -n "$tag" ]]; then
+        image="${image%:*}:${tag}"
+    fi
+    printf "${CYAN}Pulling %s...${RESET}\n" "$image"
+    podman pull "$image"
+    printf "${GREEN}Done.${RESET}\n"
 }
 
 cmd_stop() {
@@ -199,13 +217,6 @@ cmd_stop() {
     local name
     name="$(get_box_name "$1")"
     distrobox stop --yes "$name"
-}
-
-cmd_rm() {
-    validate_box "$1"
-    local name
-    name="$(get_box_name "$1")"
-    distrobox rm --force "$name"
 }
 
 cmd_status() {
@@ -246,10 +257,29 @@ cmd_logs() {
     fi
 }
 
+get_running_image_tag() {
+    local name="$1"
+    local image
+    image="$(podman inspect --format '{{.ImageName}}' "$name" 2>/dev/null || true)"
+    [[ -z "$image" ]] && return
+    echo "${image##*:}"
+}
+
+_image_markers() {
+    local tag="$1" ini_tag="$2" current_tag="$3"
+    local marks=""
+    [[ "$tag" == "$current_tag" ]] && marks+="${GREEN}← current${RESET}  "
+    [[ "$tag" == "$ini_tag" ]]     && marks+="${YELLOW}← next${RESET}"
+    printf '%s' "$marks"
+}
+
 cmd_images() {
     validate_box "$1"
     local box="$1"
     local repo="$OWNER/box-$box"
+    local ini_tag current_tag
+    ini_tag="$(get_image_tag "$box")"
+    current_tag="$(get_running_image_tag "$(get_box_name "$box")")"
 
     local token
     token="$(curl -sf \
@@ -271,40 +301,18 @@ cmd_images() {
     latest_date="$(printf '%s' "$date_tags" | head -1)"
 
     printf "${BOLD}Available versions for box-%s:${RESET}\n\n" "$box"
-    printf "${BOLD}%-24s %s${RESET}\n" "TAG" "AGE"
+    printf "${BOLD}%-24s %-12s %s${RESET}\n" "TAG" "AGE" "NOTES"
 
     if printf '%s' "$tags_json" | grep -q '"latest"'; then
         local resolves=""
         [[ -n "$latest_date" ]] && resolves="→ $(time_ago "$latest_date")"
-        printf "%-24s %s\n" "latest" "$resolves"
+        printf "%-24s %-12s %b\n" "latest" "$resolves" "$(_image_markers "latest" "$ini_tag" "$current_tag")"
     fi
 
     while IFS= read -r tag; do
         [[ -z "$tag" ]] && continue
-        printf "%-24s %s\n" "$tag" "$(time_ago "$tag")"
+        printf "%-24s %-12s %b\n" "$tag" "$(time_ago "$tag")" "$(_image_markers "$tag" "$ini_tag" "$current_tag")"
     done <<< "$date_tags"
-}
-
-cmd_pull() {
-    validate_box "$1"
-    local box="$1" tag="${2:-}"
-    local image
-    image="$(get_image_line "$box")"
-    if [[ -n "$tag" ]]; then
-        image="${image%:*}:${tag}"
-    fi
-    printf "${CYAN}Pulling %s...${RESET}\n" "$image"
-    podman pull "$image"
-    printf "${GREEN}Done.${RESET}\n"
-}
-
-cmd_revert() {
-    validate_box "$1"
-    local box="$1" tag="$2"
-    printf "${CYAN}Pinning %s to tag: %s${RESET}\n" "$box" "$tag"
-    set_image_tag "$box" "$tag"
-    distrobox assemble create --file "$REPO_ROOT/$box/distrobox.ini"
-    printf "${GREEN}Done. Use 'box rebuild %s' to return to latest.${RESET}\n" "$box"
 }
 
 if [[ $# -eq 0 ]]; then
@@ -326,20 +334,24 @@ case "$command" in
         [[ $# -ge 1 ]] || { printf "${RED}Usage: box enter <box>${RESET}\n" >&2; exit 1; }
         cmd_enter "$1"
         ;;
-    rebuild)
-        [[ $# -ge 1 ]] || { printf "${RED}Usage: box rebuild <box>${RESET}\n" >&2; exit 1; }
-        cmd_rebuild "$1"
+    set-image)
+        [[ $# -ge 1 ]] || { printf "${RED}Usage: box set-image <box> [tag]${RESET}\n" >&2; exit 1; }
+        cmd_set_image "$1" "${2:-}"
         ;;
-    rebuild-all)
-        cmd_rebuild_all
+    assemble)
+        [[ $# -ge 1 ]] || { printf "${RED}Usage: box assemble <box>${RESET}\n" >&2; exit 1; }
+        cmd_assemble "$1"
+        ;;
+    assemble-all)
+        cmd_assemble_all
+        ;;
+    pull)
+        [[ $# -ge 1 ]] || { printf "${RED}Usage: box pull <box> [tag]${RESET}\n" >&2; exit 1; }
+        cmd_pull "$1" "${2:-}"
         ;;
     stop)
         [[ $# -ge 1 ]] || { printf "${RED}Usage: box stop <box>${RESET}\n" >&2; exit 1; }
         cmd_stop "$1"
-        ;;
-    rm)
-        [[ $# -ge 1 ]] || { printf "${RED}Usage: box rm <box>${RESET}\n" >&2; exit 1; }
-        cmd_rm "$1"
         ;;
     status)
         [[ $# -ge 1 ]] || { printf "${RED}Usage: box status <box>${RESET}\n" >&2; exit 1; }
@@ -352,14 +364,6 @@ case "$command" in
     images)
         [[ $# -ge 1 ]] || { printf "${RED}Usage: box images <box>${RESET}\n" >&2; exit 1; }
         cmd_images "$1"
-        ;;
-    pull)
-        [[ $# -ge 1 ]] || { printf "${RED}Usage: box pull <box> [tag]${RESET}\n" >&2; exit 1; }
-        cmd_pull "$1" "${2:-}"
-        ;;
-    revert)
-        [[ $# -ge 2 ]] || { printf "${RED}Usage: box revert <box> <tag>${RESET}\n" >&2; exit 1; }
-        cmd_revert "$1" "$2"
         ;;
     help|--help|-h)
         usage
