@@ -37,7 +37,8 @@ RUN yay -S --noconfirm --needed \
     google-chrome \
     mongodb-tools \
     google-cloud-cli \
-    google-cloud-cli-component-gke-gcloud-auth-plugin
+    google-cloud-cli-component-gke-gcloud-auth-plugin \
+    claude-code
 
 USER root
 WORKDIR /
