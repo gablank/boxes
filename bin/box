@@ -258,19 +258,17 @@ cmd_logs() {
     fi
 }
 
-get_running_image_tag() {
+get_running_build_date() {
     local name="$1"
-    local image
-    image="$(podman inspect --format '{{.ImageName}}' "$name" 2>/dev/null || true)"
-    [[ -z "$image" ]] && return
-    echo "${image##*:}"
+    podman exec "$name" cat /etc/box-build-info 2>/dev/null \
+        | grep '^build_date=' | cut -d= -f2 || true
 }
 
 _image_markers() {
-    local tag="$1" ini_tag="$2" current_tag="$3"
+    local tag="$1" ini_tag="$2" current_build_date="$3"
     local marks=""
-    [[ "$tag" == "$current_tag" ]] && marks+="${GREEN}← current${RESET}  "
-    [[ "$tag" == "$ini_tag" ]]     && marks+="${YELLOW}← next${RESET}"
+    [[ -n "$current_build_date" && "$tag" == "$current_build_date" ]] && marks+="${GREEN}← current${RESET}  "
+    [[ "$tag" == "$ini_tag" ]] && marks+="${YELLOW}← next${RESET}"
     printf '%s' "$marks"
 }
 
@@ -278,9 +276,9 @@ cmd_images() {
     validate_box "$1"
     local box="$1"
     local repo="$OWNER/box-$box"
-    local ini_tag current_tag
+    local ini_tag current_build_date
     ini_tag="$(get_image_tag "$box")"
-    current_tag="$(get_running_image_tag "$(get_box_name "$box")")"
+    current_build_date="$(get_running_build_date "$(get_box_name "$box")")"
 
     local token
     token="$(curl -sf \
@@ -307,12 +305,12 @@ cmd_images() {
     if printf '%s' "$tags_json" | grep -q '"latest"'; then
         local resolves=""
         [[ -n "$latest_date" ]] && resolves="→ $(time_ago "$latest_date")"
-        printf "%-24s %-12s %b\n" "latest" "$resolves" "$(_image_markers "latest" "$ini_tag" "$current_tag")"
+        printf "%-24s %-12s %b\n" "latest" "$resolves" "$(_image_markers "latest" "$ini_tag" "$current_build_date")"
     fi
 
     while IFS= read -r tag; do
         [[ -z "$tag" ]] && continue
-        printf "%-24s %-12s %b\n" "$tag" "$(time_ago "$tag")" "$(_image_markers "$tag" "$ini_tag" "$current_tag")"
+        printf "%-24s %-12s %b\n" "$tag" "$(time_ago "$tag")" "$(_image_markers "$tag" "$ini_tag" "$current_build_date")"
     done <<< "$date_tags"
 }
 
