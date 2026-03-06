@@ -55,6 +55,11 @@ printf "${CYAN}Configuring image registry...${RESET}\n"
 "$BOX_BIN" init
 printf "\n"
 
+# Install shell completions
+printf "${CYAN}Installing shell completions...${RESET}\n"
+"$BOX_BIN" completions install
+printf "\n"
+
 printf "${BOLD}Setup complete!${RESET}\n\n"
 printf "Next steps:\n"
 printf "  box stage priv    # pull privbox image\n"

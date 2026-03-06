@@ -6,6 +6,9 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
 REGISTRY="ghcr.io"
 
+_BOX_COMMANDS=(init list enter set-image assemble assemble-all pull stop status logs images completions help)
+_BOX_COMMANDS_WITH_BOX=(enter set-image assemble pull stop status logs images)
+
 _detect_owner() {
     local remote
     remote="$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null || true)"
@@ -45,6 +48,7 @@ ${BOLD}COMMANDS${RESET}
     status      <box>        Show detailed box info and build metadata
     logs        <box>        Show init log
     images      <box>        List available image versions on ghcr.io
+    completions <shell>      Print or install shell completions (bash|zsh|install)
 
 ${BOLD}BOXES${RESET}
 $(discover_boxes_for_help)
@@ -316,6 +320,151 @@ cmd_images() {
     done <<< "$date_tags"
 }
 
+_completions_bash() {
+    cat <<'BASH'
+_box_completion() {
+    local cur prev words cword
+    _init_completion 2>/dev/null || {
+        COMPREPLY=()
+        cur="${COMP_WORDS[COMP_CWORD]}"
+        prev="${COMP_WORDS[COMP_CWORD-1]}"
+        cword=$COMP_CWORD
+        words=("${COMP_WORDS[@]}")
+    }
+
+    local commands
+    commands="$(box --list-boxes 2>/dev/null | tr '\n' ' ')"
+
+    if [[ $cword -eq 1 ]]; then
+        COMPREPLY=( $(compgen -W "init list enter set-image assemble assemble-all pull stop status logs images completions help" -- "$cur") )
+        return 0
+    fi
+
+    case "${words[1]}" in
+        enter|set-image|assemble|pull|stop|status|logs|images)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
+            fi
+            ;;
+        completions)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -W "bash zsh install" -- "$cur") )
+            fi
+            ;;
+    esac
+    return 0
+}
+complete -F _box_completion box
+BASH
+}
+
+_completions_zsh() {
+    cat <<'ZSH'
+#compdef box
+
+_box() {
+    local state line
+    typeset -A opt_args
+
+    _arguments \
+        '1: :_box_commands' \
+        '*:: :->args'
+
+    case $state in
+        args)
+            case $words[1] in
+                enter|set-image|assemble|pull|stop|status|logs|images)
+                    _arguments '1: :_box_boxes'
+                    ;;
+                completions)
+                    _arguments '1: :(bash zsh install)'
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_box_commands() {
+    local -a cmds
+    cmds=(
+        'init:set image registry owner in all ini files'
+        'list:list all boxes with status and image tag'
+        'enter:enter a box'
+        'set-image:set the image tag in the ini'
+        'assemble:create/recreate box from current ini'
+        'assemble-all:assemble all boxes'
+        'pull:pull image without rebuilding'
+        'stop:stop a box'
+        'status:show detailed box info and build metadata'
+        'logs:show init log'
+        'images:list available image versions on ghcr.io'
+        'completions:print or install shell completions'
+        'help:show help'
+    )
+    _describe 'command' cmds
+}
+
+_box_boxes() {
+    local -a boxes
+    boxes=( ${(f)"$(box --list-boxes 2>/dev/null)"} )
+    _describe 'box' boxes
+}
+
+_box "$@"
+ZSH
+}
+
+_completions_install() {
+    local shell_name
+    shell_name="$(basename "${SHELL:-}")"
+    local installed=false
+
+    if [[ "$shell_name" == "zsh" || -f "$HOME/.zshrc" ]]; then
+        local marker='# Added by boxes completions'
+        local eval_line='eval "$(box completions zsh)"'
+        if ! grep -qF "$eval_line" "$HOME/.zshrc" 2>/dev/null; then
+            printf '\n%s\n%s\n' "$marker" "$eval_line" >> "$HOME/.zshrc"
+            printf "${GREEN}Installed zsh completions in ~/.zshrc${RESET}\n"
+        else
+            printf "${CYAN}zsh completions already installed in ~/.zshrc${RESET}\n"
+        fi
+        installed=true
+    fi
+
+    if [[ "$shell_name" == "bash" || -f "$HOME/.bashrc" ]]; then
+        local eval_line='eval "$(box completions bash)"'
+        if ! grep -qF "$eval_line" "$HOME/.bashrc" 2>/dev/null; then
+            printf '\n# Added by boxes completions\n%s\n' "$eval_line" >> "$HOME/.bashrc"
+            printf "${GREEN}Installed bash completions in ~/.bashrc${RESET}\n"
+        else
+            printf "${CYAN}bash completions already installed in ~/.bashrc${RESET}\n"
+        fi
+        installed=true
+    fi
+
+    if [[ "$installed" == false ]]; then
+        printf "${YELLOW}Could not find ~/.zshrc or ~/.bashrc to install completions.${RESET}\n"
+        printf "Run one of these manually:\n"
+        printf "  echo 'eval \"\$(box completions bash)\"' >> ~/.bashrc\n"
+        printf "  echo 'eval \"\$(box completions zsh)\"'  >> ~/.zshrc\n"
+        exit 1
+    fi
+    printf "${YELLOW}Restart your shell (or source the rc file) to activate completions.${RESET}\n"
+}
+
+cmd_completions() {
+    local subcmd="${1:-}"
+    case "$subcmd" in
+        bash)    _completions_bash ;;
+        zsh)     _completions_zsh ;;
+        install) _completions_install ;;
+        *)
+            printf "${RED}Usage: box completions <bash|zsh|install>${RESET}\n" >&2
+            exit 1
+            ;;
+    esac
+}
+
 if [[ $# -eq 0 ]]; then
     usage
     exit 0
@@ -325,6 +474,12 @@ command="$1"
 shift
 
 case "$command" in
+    --list-boxes)
+        discover_boxes
+        ;;
+    completions)
+        cmd_completions "${1:-}"
+        ;;
     init)
         cmd_init "${1:-}"
         ;;
