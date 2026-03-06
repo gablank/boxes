@@ -100,7 +100,24 @@ Add it to the extension install loop in `Containerfile.base`.
   - Upgrade to latest: `box pull priv && box set-image priv && box assemble priv` (if already on `latest`, skip `set-image`)
   - Rollback: `box set-image priv <tag> && box pull priv <tag> && box assemble priv`
   - Recreate without re-pulling: `box assemble priv`
-- To add a command: add `cmd_<name>()` function (use `_` for hyphens in function name), add the case in the dispatch block, update `usage()`
+- To add a command: add `cmd_<name>()` function (use `_` for hyphens in function name), add the case in the dispatch block, update `usage()`, **and add the command name to `_BOX_COMMANDS`** (see Completions sync contract below)
+- `box completions <bash|zsh|install>` — prints or installs shell completions; `install` appends `eval "$(box completions <shell>)"` to the user's rc file so completions always reflect the current `bin/box`
+
+## Completions Sync Contract
+
+**Single source of truth for command names:** `_BOX_COMMANDS` array at the top of `bin/box`.
+
+When adding a new command:
+1. Add `cmd_<name>()` and the case entry (as above)
+2. **Add the name to `_BOX_COMMANDS`** — the CI `lint` job will fail if a case dispatch command is missing from `_BOX_COMMANDS`
+3. If the command takes `<box>` as its first argument, also add it to `_BOX_COMMANDS_WITH_BOX`
+4. Update the bash and zsh completion heredocs inside `cmd_completions` with the new command (description for zsh)
+
+**Box names** are always discovered dynamically via `box --list-boxes` at completion time — no manual sync needed when adding a new box.
+
+**CI enforcement:** The `lint` job in `.github/workflows/build.yml` runs on every push and verifies:
+- `box completions bash` and `box completions zsh` both exit 0 and contain every entry in `_BOX_COMMANDS`
+- Every command extracted from the `case` dispatch block exists in `_BOX_COMMANDS`
 
 ## Shell Script Style
 

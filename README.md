@@ -30,12 +30,13 @@ cd boxes
 - Check that prerequisites are installed
 - Add the repo's `bin/` directory to your PATH (writes to `~/.bashrc` / `~/.zshrc`)
 - Configure image URLs to match this repo's registry owner
+- Install shell completions (bash and zsh)
 
 ### 2. Pull and start a box
 
 ```bash
-box rebuild priv
-box rebuild work
+box pull priv && box assemble priv
+box pull work && box assemble work
 ```
 
 ### 3. Enter a box
@@ -48,18 +49,27 @@ box enter work
 ## The `box` CLI
 
 ```
-box init      [owner]      Set image registry owner in all ini files (default: git remote)
-box list                   List all boxes with status and image tag
-box enter     <box>        Enter a box
-box rebuild   <box>        Pull latest image and recreate unconditionally
-box rebuild-all            Rebuild all boxes
-box stop      <box>        Stop a box
-box rm        <box>        Remove a box
-box status    <box>        Show detailed box info and build metadata
-box logs      <box>        Show init log
-box images    <box>        List available image versions on ghcr.io
-box revert    <box> <tag>  Pin box to a specific image tag and recreate
+box init        [owner]         Set image registry owner in all ini files (default: git remote)
+box list                        List all boxes with status and image tag
+box enter       <box>           Enter a box
+box set-image   <box> [tag]     Set the image tag in the ini (default: latest)
+box assemble    <box>           Create/recreate box from current ini
+box assemble-all                Assemble all boxes
+box pull        <box> [tag]     Pull image without rebuilding (default: current tag in ini)
+box stop        <box>           Stop a box
+box status      <box>           Show detailed box info and build metadata
+box logs        <box>           Show init log
+box images      <box>           List available image versions on ghcr.io
+box completions <bash|zsh|install>  Print or install shell completions
 ```
+
+**Common workflows:**
+
+| Goal | Commands |
+|------|----------|
+| Upgrade to latest | `box pull priv && box set-image priv && box assemble priv` (skip `set-image` if already on `latest`) |
+| Rollback | `box set-image priv <tag> && box pull priv <tag> && box assemble priv` |
+| Recreate without re-pulling | `box assemble priv` |
 
 ## Forking / Using Your Own Images
 

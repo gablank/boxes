@@ -36,9 +36,18 @@ Each command has exactly one responsibility:
 | Rollback | `box set-image priv <tag> && box pull priv <tag> && box assemble priv` |
 | Recreate without re-pulling | `box assemble priv` |
 
+## Shell completions
+
+Completions are embedded in `bin/box` and output by `box completions bash` / `box completions zsh`. `setup.sh` installs them by appending `eval "$(box completions <shell>)"` to `~/.bashrc` / `~/.zshrc`. Because the eval runs at shell startup, completions always reflect the current `bin/box` after a `git pull` — no manual reinstall needed.
+
+**Single source of truth:** `_BOX_COMMANDS` array at the top of `bin/box`. The CI `lint` job verifies the case dispatch matches it.
+
 ## Adding a new command
 
 1. Add a `cmd_<name>()` function (use `_` in the function name for hyphens in the command name, e.g. `cmd_set_image` for `set-image`)
 2. Add the case to the dispatch block at the bottom
 3. Add it to the `usage()` help text
 4. Validate arguments (box name, required args) at the top of the function
+5. **Add the command name to `_BOX_COMMANDS`** — CI will fail if this is missing
+6. If the command takes `<box>` as its first arg, also add it to `_BOX_COMMANDS_WITH_BOX`
+7. Add a description line to the zsh `_box_commands()` helper inside `_completions_zsh()`
