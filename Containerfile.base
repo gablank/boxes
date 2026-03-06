@@ -16,7 +16,8 @@ RUN pacman -S --noconfirm --needed \
     docker docker-compose \
     pipewire libpipewire \
     github-cli \
-    git-absorb
+    git-absorb \
+    diff-so-fancy
 
 # makepkg cannot run as root
 RUN useradd -m -G wheel builduser && \
