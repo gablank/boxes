@@ -11,6 +11,74 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Smoke-test completions output
+        run: |
+          bash bin/box completions bash > /tmp/box_bash.txt
+          bash bin/box completions zsh  > /tmp/box_zsh.txt
+
+          # Extract commands from _BOX_COMMANDS array in bin/box
+          mapfile -t declared < <(
+            grep -oP "(?<=_BOX_COMMANDS=\()[^)]*" bin/box \
+              | tr ' ' '\n' | tr -d '()' | grep -v '^$'
+          )
+
+          # Verify every declared command appears in bash completions
+          missing=()
+          for cmd in "${declared[@]}"; do
+            grep -q "$cmd" /tmp/box_bash.txt || missing+=("$cmd")
+          done
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            printf "ERROR: commands missing from bash completions: %s\n" "${missing[*]}"
+            exit 1
+          fi
+
+          # Verify every declared command appears in zsh completions
+          missing=()
+          for cmd in "${declared[@]}"; do
+            grep -q "$cmd" /tmp/box_zsh.txt || missing+=("$cmd")
+          done
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            printf "ERROR: commands missing from zsh completions: %s\n" "${missing[*]}"
+            exit 1
+          fi
+
+      - name: Verify _BOX_COMMANDS matches case dispatch
+        run: |
+          # Extract commands from _BOX_COMMANDS array
+          mapfile -t declared < <(
+            grep -oP "(?<=_BOX_COMMANDS=\()[^)]*" bin/box \
+              | tr ' ' '\n' | tr -d '()' | grep -v '^$'
+          )
+
+          # Extract commands from case dispatch block (lines matching word followed by )
+          mapfile -t dispatched < <(
+            awk '/^case "\$command" in/,/^esac/' bin/box \
+              | grep -oP '^\s+\K[a-z][a-z0-9-]+(?=\))' \
+              | grep -v '^-'
+          )
+
+          # Check every dispatched command is in _BOX_COMMANDS
+          missing=()
+          for cmd in "${dispatched[@]}"; do
+            found=false
+            for d in "${declared[@]}"; do
+              [[ "$d" == "$cmd" ]] && found=true && break
+            done
+            $found || missing+=("$cmd")
+          done
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            printf "ERROR: case dispatch has commands not in _BOX_COMMANDS: %s\n" "${missing[*]}"
+            printf "Add them to _BOX_COMMANDS in bin/box\n"
+            exit 1
+          fi
+
+          printf "OK: all dispatched commands present in _BOX_COMMANDS\n"
+
   changes:
     runs-on: ubuntu-latest
     outputs:
