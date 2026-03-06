@@ -265,10 +265,10 @@ get_running_build_date() {
 }
 
 _image_markers() {
-    local tag="$1" ini_tag="$2" current_build_date="$3"
+    local tag="$1" current_build_date="$2" next_tag="$3"
     local marks=""
     [[ -n "$current_build_date" && "$tag" == "$current_build_date" ]] && marks+="${GREEN}← current${RESET}  "
-    [[ "$tag" == "$ini_tag" ]] && marks+="${YELLOW}← next${RESET}"
+    [[ "$tag" == "$next_tag" ]] && marks+="${YELLOW}← next${RESET}"
     printf '%s' "$marks"
 }
 
@@ -294,23 +294,25 @@ cmd_images() {
         -H "Authorization: Bearer $token" \
         "https://$REGISTRY/v2/${repo}/tags/list")"
 
-    local date_tags latest_date
+    local date_tags latest_date has_latest next_tag
     date_tags="$(printf '%s' "$tags_json" \
         | grep -o '"[0-9][^"]*"' | tr -d '"' | sort -r)"
     latest_date="$(printf '%s' "$date_tags" | head -1)"
+    has_latest=""
+    printf '%s' "$tags_json" | grep -q '"latest"' && has_latest=1
+
+    # Resolve "latest" ini tag to the concrete date tag it points to
+    next_tag="$ini_tag"
+    [[ "$ini_tag" == "latest" && -n "$has_latest" && -n "$latest_date" ]] && next_tag="$latest_date"
 
     printf "${BOLD}Available versions for box-%s:${RESET}\n\n" "$box"
     printf "${BOLD}%-24s %-12s %s${RESET}\n" "TAG" "AGE" "NOTES"
 
-    if printf '%s' "$tags_json" | grep -q '"latest"'; then
-        local resolves=""
-        [[ -n "$latest_date" ]] && resolves="→ $(time_ago "$latest_date")"
-        printf "%-24s %-12s %b\n" "latest" "$resolves" "$(_image_markers "latest" "$ini_tag" "$current_build_date")"
-    fi
-
     while IFS= read -r tag; do
         [[ -z "$tag" ]] && continue
-        printf "%-24s %-12s %b\n" "$tag" "$(time_ago "$tag")" "$(_image_markers "$tag" "$ini_tag" "$current_build_date")"
+        local display_tag="$tag"
+        [[ -n "$has_latest" && "$tag" == "$latest_date" ]] && display_tag="$tag (latest)"
+        printf "%-24s %-12s %b\n" "$display_tag" "$(time_ago "$tag")" "$(_image_markers "$tag" "$current_build_date" "$next_tag")"
     done <<< "$date_tags"
 }
 
