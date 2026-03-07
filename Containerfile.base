@@ -17,7 +17,8 @@ RUN pacman -S --noconfirm --needed \
     pipewire libpipewire \
     github-cli \
     git-absorb \
-    diff-so-fancy
+    diff-so-fancy \
+    bubblewrap socat libseccomp
 
 # makepkg cannot run as root
 RUN useradd -m -G wheel builduser && \
