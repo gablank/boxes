@@ -32,6 +32,7 @@ replace=true
 pull=true
 start_now=true
 init=false
+additional_flags=--security-opt seccomp=unconfined
 volume=${XDG_RUNTIME_DIR}/podman/podman.sock:/podman.sock:rw
 pre_init_hooks=export SHELL=/usr/bin/zsh
 init_hooks=su - ${container_user_name} -c "bash /usr/local/share/box-init/init-user.sh"
