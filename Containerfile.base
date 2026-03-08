@@ -7,17 +7,28 @@ RUN pacman-key --init && \
     pacman-key --populate archlinux && \
     pacman -Syu --noconfirm
 
+# Pacman packages, grouped by purpose (one group per line below):
+#   Build toolchain + core utils: base-devel glib2 git openssh sudo ...
+#   Node.js runtime + npm: explicit dep for sandbox-runtime (see npm install below)
+#   Shell & terminal: zsh tmux btop
+#   Editors: nano vim (vi-vim-symlink from AUR aliases vi -> vim)
+#   Python + polyglot runtime: uv, mise (usage is a mise dep)
+#   IaC: terraform
+#   Container mgmt: docker docker-compose (talks to host podman socket)
+#   Audio passthrough: pipewire libpipewire (client libs for host PipeWire)
+#   Git ecosystem: github-cli, git-absorb (auto-fixup), diff-so-fancy
+#   Claude Code sandbox: bubblewrap (process isolation), socat (socket proxy),
+#     libseccomp (BPF seccomp filters)
 RUN pacman -S --noconfirm --needed \
     base-devel glib2 git openssh sudo ca-certificates curl wget gnupg \
+    nodejs npm \
     zsh tmux btop \
     nano vim \
     uv mise usage \
     terraform \
     docker docker-compose \
     pipewire libpipewire \
-    github-cli \
-    git-absorb \
-    diff-so-fancy \
+    github-cli git-absorb diff-so-fancy \
     bubblewrap socat libseccomp
 
 # makepkg cannot run as root
@@ -30,19 +41,26 @@ RUN git clone https://aur.archlinux.org/yay.git . && \
     makepkg -s --noconfirm --needed && \
     sudo pacman -U --noconfirm ./*.pkg.tar*
 
+# AUR packages, grouped by purpose:
+#   IDEs / editors: visual-studio-code-bin, cursor-bin
+#   Zsh framework + vi->vim alias: oh-my-zsh-git, vi-vim-symlink
+#   Browser (exported from workbox via distrobox): google-chrome
+#   Database CLI tools (mongodump, mongorestore, etc.): mongodb-tools
+#   GCP CLI + GKE auth plugin for kubectl: google-cloud-cli, gke-gcloud-auth-plugin
+#   AI coding assistant (Node.js CLI): claude-code
 RUN yay -S --noconfirm --needed \
-    visual-studio-code-bin \
-    cursor-bin \
-    oh-my-zsh-git \
-    vi-vim-symlink \
+    visual-studio-code-bin cursor-bin \
+    oh-my-zsh-git vi-vim-symlink \
     google-chrome \
     mongodb-tools \
-    google-cloud-cli \
-    google-cloud-cli-component-gke-gcloud-auth-plugin \
+    google-cloud-cli google-cloud-cli-component-gke-gcloud-auth-plugin \
     claude-code
 
 USER root
 WORKDIR /
+
+# Claude Code seccomp sandbox: provides BPF filters to block unix domain sockets
+RUN npm install -g @anthropic-ai/sandbox-runtime
 
 # Pre-install Cursor extensions to a system-wide directory.
 # Uses /usr/bin/cursor directly (before wrapper is created).

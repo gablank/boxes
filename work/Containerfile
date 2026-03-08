@@ -4,6 +4,10 @@ FROM ${BASE_IMAGE}
 ARG BUILD_DATE=unknown
 ARG BUILD_SHA=unknown
 
+# Work-specific packages:
+#   kubectl, k9s: Kubernetes CLI + TUI dashboard
+#   qemu-base, qemu-img: VM emulation and disk image tools
+#   glab: GitLab CLI
 RUN pacman -Syu --noconfirm --needed kubectl k9s qemu-base qemu-img glab && \
     pacman -Scc --noconfirm && \
     rm -rf /var/cache/pacman/pkg/*
