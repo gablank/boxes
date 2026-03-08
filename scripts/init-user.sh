@@ -26,4 +26,8 @@ ensure_env "$HOME/.profile" DOCKER_HOST "unix:///podman.sock"
 
 chsh -s /usr/bin/zsh "$USER" >/dev/null 2>&1 || true
 
+if [[ -d /var/lib/tailscale ]] && ! grep -qF 'tailscaled' ~/.zshrc 2>/dev/null; then
+    printf '\n# Auto-start tailscaled on shell open (only if state dir is mounted)\nif [[ -d /var/lib/tailscale ]] && ! pgrep -x tailscaled &>/dev/null; then\n    sudo tailscaled --statedir=/var/lib/tailscale &>/tmp/tailscaled.log &\nfi\n' >> ~/.zshrc
+fi
+
 printf '[box-init] user init done\n'

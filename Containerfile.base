@@ -19,6 +19,7 @@ RUN pacman-key --init && \
 #   Git ecosystem: github-cli, git-absorb (auto-fixup), diff-so-fancy
 #   Claude Code sandbox: bubblewrap (process isolation), socat (socket proxy),
 #     libseccomp (BPF seccomp filters)
+#   VPN: tailscale (client for per-box tailnets)
 RUN pacman -S --noconfirm --needed \
     base-devel glib2 git openssh sudo ca-certificates curl wget gnupg \
     nodejs npm \
@@ -29,7 +30,8 @@ RUN pacman -S --noconfirm --needed \
     docker docker-compose \
     pipewire libpipewire \
     github-cli git-absorb diff-so-fancy \
-    bubblewrap socat libseccomp
+    bubblewrap socat libseccomp \
+    tailscale
 
 # makepkg cannot run as root
 RUN useradd -m -G wheel builduser && \
