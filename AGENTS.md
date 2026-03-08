@@ -134,7 +134,8 @@ When adding a new command:
 - `init_hooks` use `${container_user_name}` (a distrobox-init shell variable guaranteed in scope at eval time) — **not** `${USER}`, which is unbound when init_hooks run inside the container
 - `distrobox assemble` expands host-side env vars at runtime, so `${HOME}` and `${XDG_RUNTIME_DIR}` resolve correctly for any user
 - All boxes use `additional_flags=--security-opt seccomp=unconfined` (required for bubblewrap/bwrap inside the container)
-- See `.cursor/skills/distrobox-ini-conventions/SKILL.md` for the full template and command reference
+- Tailscale per-box: add `volume=${HOME}/distrobox/<box>/tailscale:/var/lib/tailscale:rw,z` and `--device /dev/net/tun --cap-add NET_ADMIN --cap-add NET_RAW` to `additional_flags`; append `&& tailscaled --statedir=/var/lib/tailscale &` to `init_hooks`; `init-user.sh` auto-adds a `.zshrc` snippet to restart tailscaled on shell open (for post-reboot starts)
+- See `.agents/skills/distrobox-ini-conventions/SKILL.md` for the full template and command reference
 
 ## Adding a New Box
 

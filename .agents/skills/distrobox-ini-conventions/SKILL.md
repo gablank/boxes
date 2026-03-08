@@ -40,6 +40,20 @@ init_hooks=su - ${container_user_name} -c "bash /usr/local/share/box-init/init-u
 
 The `gablank` in the template is a placeholder/default. After `box init` runs it will be replaced with the actual owner derived from the git remote.
 
+## Tailscale per box
+
+To run a separate Tailscale daemon inside a box (persisting auth state across recreates):
+
+```ini
+volume=${HOME}/distrobox/<box>/tailscale:/var/lib/tailscale:rw,z
+additional_flags=--security-opt seccomp=unconfined --device /dev/net/tun --cap-add NET_ADMIN --cap-add NET_RAW
+init_hooks=su - ${container_user_name} -c "bash /usr/local/share/box-init/init-user.sh" && tailscaled --statedir=/var/lib/tailscale &
+```
+
+- The `:z` on the volume mount is required on SELinux-enforcing hosts (Bazzite/Fedora)
+- `init_hooks` starts tailscaled on container creation; `init-user.sh` adds a `.zshrc` snippet that auto-restarts it on shell open (covers the host-reboot case)
+- After first assemble run `tailscale up` inside the box; auth state persists in the host directory
+
 ## box rebuild vs box revert
 
 - `box rebuild <box>` — always recreates unconditionally with the latest image.
