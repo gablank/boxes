@@ -134,7 +134,14 @@ When adding a new command:
 - `init_hooks` use `${container_user_name}` (a distrobox-init shell variable guaranteed in scope at eval time) — **not** `${USER}`, which is unbound when init_hooks run inside the container
 - `distrobox assemble` expands host-side env vars at runtime, so `${HOME}` and `${XDG_RUNTIME_DIR}` resolve correctly for any user
 - All boxes use `additional_flags=--security-opt seccomp=unconfined` (required for bubblewrap/bwrap inside the container)
-- Tailscale per-box: add `volume=${HOME}/distrobox/<box>/tailscale:/var/lib/tailscale:rw,z` and `--device /dev/net/tun --cap-add NET_ADMIN --cap-add NET_RAW` to `additional_flags`; append `&& tailscaled --statedir=/var/lib/tailscale &` to `init_hooks`; `init-user.sh` auto-adds a `.zshrc` snippet to restart tailscaled on shell open (for post-reboot starts)
+- **Tailscale per-box**: each box has its own tailscale node (different tailnet per box) via `unshare_netns=true`. This gives the box its own network namespace whose user namespace it owns, making `CAP_NET_ADMIN` valid for `TUNSETIFF`. Setup:
+  - `unshare_netns=true` in the ini
+  - `volume=${HOME}/distrobox/<box>/tailscale:/var/lib/tailscale:rw,z` — persists auth state across recreates
+  - `--device /dev/net/tun --cap-add NET_ADMIN --cap-add NET_RAW` in `additional_flags`
+  - `mkdir -p /var/run/tailscale-box && tailscaled --statedir=/var/lib/tailscale --socket=/var/run/tailscale-box/tailscaled.sock &` appended to `init_hooks` — uses a separate socket to avoid distrobox's automatic `/var/run/tailscale/tailscaled.sock` symlink to the host
+  - `init-user.sh` sets `TS_SOCKET=/var/run/tailscale-box/tailscaled.sock` in `.zshenv` and adds a `.zshrc` snippet that restarts tailscaled on shell open if the socket is gone (covers host reboots)
+  - After first `box assemble <box>`, run `tailscale up` inside the box to authenticate
+- **Docker-compose + work tailnet**: to make compose services reachable from the work box *and* on the work tailnet, add `network_mode: "container:workbox"` to each service in the compose file. Services then share workbox's network namespace; use `localhost:PORT` to reach them from the box.
 - See `.agents/skills/distrobox-ini-conventions/SKILL.md` for the full template and command reference
 
 ## Adding a New Box

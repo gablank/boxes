@@ -42,17 +42,34 @@ The `gablank` in the template is a placeholder/default. After `box init` runs it
 
 ## Tailscale per box
 
-To run a separate Tailscale daemon inside a box (persisting auth state across recreates):
+Each box can have its own tailscale node (connecting to a different tailnet) using `unshare_netns=true`. With a private network namespace, the box's user namespace owns that netns, making `CAP_NET_ADMIN` valid for `TUNSETIFF` (TUN device creation).
+
+Distrobox-init always creates `/var/run/tailscale/tailscaled.sock` as a symlink to the host's socket. To avoid the box's tailscaled colliding with that, use a separate socket path.
+
+Add to `distrobox.ini`:
 
 ```ini
+unshare_netns=true
 volume=${HOME}/distrobox/<box>/tailscale:/var/lib/tailscale:rw,z
 additional_flags=--security-opt seccomp=unconfined --device /dev/net/tun --cap-add NET_ADMIN --cap-add NET_RAW
-init_hooks=su - ${container_user_name} -c "bash /usr/local/share/box-init/init-user.sh" && tailscaled --statedir=/var/lib/tailscale &
+init_hooks=su - ${container_user_name} -c "bash /usr/local/share/box-init/init-user.sh" && mkdir -p /var/run/tailscale-box && tailscaled --statedir=/var/lib/tailscale --socket=/var/run/tailscale-box/tailscaled.sock &
 ```
 
 - The `:z` on the volume mount is required on SELinux-enforcing hosts (Bazzite/Fedora)
-- `init_hooks` starts tailscaled on container creation; `init-user.sh` adds a `.zshrc` snippet that auto-restarts it on shell open (covers the host-reboot case)
-- After first assemble run `tailscale up` inside the box; auth state persists in the host directory
+- `init-user.sh` detects `/var/lib/tailscale` and sets `TS_SOCKET=/var/run/tailscale-box/tailscaled.sock` in `.zshenv`, and adds a `.zshrc` snippet that auto-restarts tailscaled on shell open if the socket is missing (covers host reboots)
+- After first `box assemble <box>`, run `tailscale up` inside the box to authenticate; auth state persists in `~/distrobox/<box>/tailscale/`
+
+### Docker-compose services on the box tailnet
+
+To make compose services share the box's network namespace (reachable via `localhost` and on the box's tailnet):
+
+```yaml
+services:
+  myservice:
+    network_mode: "container:workbox"
+```
+
+Port collisions between services must be avoided manually since they all share one netns. Inter-service communication uses `localhost:PORT` rather than Docker service DNS.
 
 ## box rebuild vs box revert
 
