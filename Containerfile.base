@@ -82,6 +82,7 @@ RUN mkdir -p /opt/cursor-extensions && \
         tamasfe.even-better-toml \
         astral-sh.ty \
         DavidAnson.vscode-markdownlint \
+        anthropic.claude-code \
         bierner.markdown-mermaid; \
     do \
         /usr/bin/cursor --no-sandbox --extensions-dir /opt/cursor-extensions \
