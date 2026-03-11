@@ -44,7 +44,7 @@ The `gablank` in the template is a placeholder/default. After `box init` runs it
 
 Each box can have its own tailscale node (connecting to a different tailnet) using `unshare_netns=true`. With a private network namespace, the box's user namespace owns that netns, making `CAP_NET_ADMIN` valid for `TUNSETIFF` (TUN device creation).
 
-Distrobox-init always creates `/var/run/tailscale/tailscaled.sock` as a symlink to the host's socket. To avoid the box's tailscaled colliding with that, use a separate socket path.
+Distrobox-init always creates `/var/run/tailscale/tailscaled.sock` as a symlink to the host's tailscale socket. The `init_hooks` must remove this symlink so the box's own tailscaled can write its socket at the default path.
 
 Add to `distrobox.ini`:
 
@@ -52,11 +52,11 @@ Add to `distrobox.ini`:
 unshare_netns=true
 volume=${HOME}/distrobox/<box>/tailscale:/var/lib/tailscale:rw,z
 additional_flags=--security-opt seccomp=unconfined --device /dev/net/tun --cap-add NET_ADMIN --cap-add NET_RAW
-init_hooks=su - ${container_user_name} -c "bash /usr/local/share/box-init/init-user.sh" && mkdir -p /var/run/tailscale-box && tailscaled --statedir=/var/lib/tailscale --socket=/var/run/tailscale-box/tailscaled.sock &
+init_hooks=su - ${container_user_name} -c "bash /usr/local/share/box-init/init-user.sh" && rm -f /var/run/tailscale/tailscaled.sock && tailscaled --statedir=/var/lib/tailscale &
 ```
 
 - The `:z` on the volume mount is required on SELinux-enforcing hosts (Bazzite/Fedora)
-- `init-user.sh` detects `/var/lib/tailscale` and sets `TS_SOCKET=/var/run/tailscale-box/tailscaled.sock` in `.zshenv`, and adds a `.zshrc` snippet that auto-restarts tailscaled on shell open if the socket is missing (covers host reboots)
+- `shell-init.sh` (sourced from `.zshrc` by `init-user.sh`) removes any stale host symlink and auto-restarts tailscaled on shell open if the socket is missing (covers host reboots). All box runtime env and services live in this file — no direct injection into dotfiles
 - After first `box assemble <box>`, run `tailscale up` inside the box to authenticate; auth state persists in `~/distrobox/<box>/tailscale/`
 
 ### Docker-compose services on the box tailnet

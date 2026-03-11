@@ -138,8 +138,8 @@ When adding a new command:
   - `unshare_netns=true` in the ini
   - `volume=${HOME}/distrobox/<box>/tailscale:/var/lib/tailscale:rw,z` — persists auth state across recreates
   - `--device /dev/net/tun --cap-add NET_ADMIN --cap-add NET_RAW` in `additional_flags`
-  - `mkdir -p /var/run/tailscale-box && tailscaled --statedir=/var/lib/tailscale --socket=/var/run/tailscale-box/tailscaled.sock &` appended to `init_hooks` — uses a separate socket to avoid distrobox's automatic `/var/run/tailscale/tailscaled.sock` symlink to the host
-  - `init-user.sh` sets `TS_SOCKET=/var/run/tailscale-box/tailscaled.sock` in `.zshenv` and adds a `.zshrc` snippet that restarts tailscaled on shell open if the socket is gone (covers host reboots)
+  - `rm -f /var/run/tailscale/tailscaled.sock && tailscaled --statedir=/var/lib/tailscale &` appended to `init_hooks` — removes distrobox's automatic symlink to the host daemon so tailscaled writes its own socket at the default path
+  - `shell-init.sh` (sourced from `.zshrc`) removes any stale host symlink and restarts tailscaled on shell open if the socket is gone (covers host reboots)
   - After first `box assemble <box>`, run `tailscale up` inside the box to authenticate
 - **Docker-compose + work tailnet**: to make compose services reachable from the work box *and* on the work tailnet, add `network_mode: "container:workbox"` to each service in the compose file. Services then share workbox's network namespace; use `localhost:PORT` to reach them from the box.
 - See `.agents/skills/distrobox-ini-conventions/SKILL.md` for the full template and command reference

@@ -15,7 +15,7 @@ RUN pacman-key --init && \
 #   Python + polyglot runtime: uv, mise (usage is a mise dep)
 #   IaC: terraform
 #   Container mgmt: docker docker-compose (talks to host podman socket)
-#   Audio passthrough: pipewire libpipewire (client libs for host PipeWire)
+#   Audio passthrough: pipewire libpipewire pipewire-alsa pipewire-pulse (client libs + ALSA/PA bridges for host PipeWire)
 #   Git ecosystem: github-cli, git-absorb (auto-fixup), diff-so-fancy
 #   Claude Code sandbox: bubblewrap (process isolation), socat (socket proxy),
 #     libseccomp (BPF seccomp filters)
@@ -28,7 +28,7 @@ RUN pacman -S --noconfirm --needed \
     uv mise usage \
     terraform \
     docker docker-compose \
-    pipewire libpipewire \
+    pipewire libpipewire pipewire-alsa pipewire-pulse \
     github-cli git-absorb diff-so-fancy \
     bubblewrap socat libseccomp \
     tailscale
@@ -109,7 +109,8 @@ RUN printf 'export ZSH=/usr/share/oh-my-zsh\nZSH_THEME="robbyrussell"\nplugins=(
         > /etc/skel/.zshrc
 
 COPY scripts/init-user.sh /usr/local/share/box-init/init-user.sh
-RUN chmod +x /usr/local/share/box-init/init-user.sh
+COPY scripts/shell-init.sh /usr/local/share/box-init/shell-init.sh
+RUN chmod +x /usr/local/share/box-init/init-user.sh /usr/local/share/box-init/shell-init.sh
 
 COPY local-bin/ /usr/local/bin/
 RUN chmod +x /usr/local/bin/* 2>/dev/null || true
