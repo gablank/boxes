@@ -33,13 +33,19 @@ RUN pacman -S --noconfirm --needed \
     bubblewrap socat libseccomp \
     tailscale
 
-# Switch iptables to nftables backend (host kernel lacks ip_tables module)
+# Switch iptables/ip6tables to nftables backend (host kernel lacks ip_tables module)
 RUN ln -sf /usr/bin/xtables-nft-multi /usr/bin/iptables && \
     ln -sf /usr/bin/xtables-nft-multi /usr/bin/iptables-restore && \
     ln -sf /usr/bin/xtables-nft-multi /usr/bin/iptables-save && \
     ln -sf /usr/bin/xtables-nft-multi /usr/sbin/iptables && \
     ln -sf /usr/bin/xtables-nft-multi /usr/sbin/iptables-restore && \
-    ln -sf /usr/bin/xtables-nft-multi /usr/sbin/iptables-save
+    ln -sf /usr/bin/xtables-nft-multi /usr/sbin/iptables-save && \
+    ln -sf /usr/bin/xtables-nft-multi /usr/bin/ip6tables && \
+    ln -sf /usr/bin/xtables-nft-multi /usr/bin/ip6tables-restore && \
+    ln -sf /usr/bin/xtables-nft-multi /usr/bin/ip6tables-save && \
+    ln -sf /usr/bin/xtables-nft-multi /usr/sbin/ip6tables && \
+    ln -sf /usr/bin/xtables-nft-multi /usr/sbin/ip6tables-restore && \
+    ln -sf /usr/bin/xtables-nft-multi /usr/sbin/ip6tables-save
 
 # makepkg cannot run as root
 RUN useradd -m -G wheel builduser && \
