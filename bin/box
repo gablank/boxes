@@ -186,11 +186,34 @@ cmd_set_image() {
     printf "${GREEN}Image for %s set to: %s${RESET}\n" "$box" "$(get_image_line "$box")"
 }
 
+ensure_host_dirs() {
+    local ini="$1" line host_path
+    while IFS= read -r line; do
+        # Expand ~ and env vars in the host path
+        host_path="$(eval printf '%s' "${line%%:*}")"
+        if [[ -n "$host_path" && ! -d "$host_path" ]]; then
+            printf "${CYAN}Creating host directory: %s${RESET}\n" "$host_path"
+            mkdir -p "$host_path"
+        fi
+    done < <(grep -oP '^volume=\K.+' "$ini")
+    # Also ensure home= directory exists
+    local home_val
+    home_val="$(grep -oP '^home=\K.+' "$ini" || true)"
+    if [[ -n "$home_val" ]]; then
+        home_val="$(eval printf '%s' "$home_val")"
+        if [[ ! -d "$home_val" ]]; then
+            printf "${CYAN}Creating home directory: %s${RESET}\n" "$home_val"
+            mkdir -p "$home_val"
+        fi
+    fi
+}
+
 cmd_assemble() {
     validate_box "$1"
     local box="$1" name
     name="$(get_box_name "$box")"
     printf "${CYAN}Assembling %s (%s) from %s...${RESET}\n" "$box" "$name" "$(get_image_line "$box")"
+    ensure_host_dirs "$REPO_ROOT/$box/distrobox.ini"
     distrobox assemble create --file "$REPO_ROOT/$box/distrobox.ini"
     printf "${GREEN}Done.${RESET}\n"
 }
