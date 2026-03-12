@@ -92,6 +92,9 @@ RUN mkdir -p /opt/cursor-extensions && \
             --install-extension "$ext" || true; \
     done
 
+# Allow runtime users to write temp files inside extension directories (e.g. debugpy)
+RUN chmod -R a+w /opt/cursor-extensions
+
 # Wrapper so both CLI and .desktop launch use the pre-installed extensions
 RUN printf '#!/bin/sh\nexec /usr/bin/cursor --extensions-dir /opt/cursor-extensions "$@"\n' \
         > /usr/local/bin/cursor && \
