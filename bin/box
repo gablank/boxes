@@ -100,6 +100,17 @@ get_box_name() {
     grep '^name=' "$REPO_ROOT/$box/distrobox.ini" | head -1 | cut -d= -f2
 }
 
+is_rootful() {
+    local box="$1"
+    ensure_compiled "$box"
+    grep -q '^root=true' "$REPO_ROOT/$box/distrobox.ini"
+}
+
+root_flag() {
+    local box="$1"
+    is_rootful "$box" && printf '%s' "--root" || true
+}
+
 get_image_line() {
     local box="$1"
     ensure_compiled "$box"
@@ -122,9 +133,9 @@ set_image_tag() {
 }
 
 container_status() {
-    local name="$1"
+    local name="$1" rflag="${2:-}"
     local line
-    line="$(distrobox list 2>/dev/null | grep -w "$name" || true)"
+    line="$(distrobox list $rflag 2>/dev/null | grep -w "$name" || true)"
     if [[ -z "$line" ]]; then
         echo "not created"
         return
@@ -180,7 +191,7 @@ cmd_list() {
     for box in $(discover_boxes); do
         name="$(get_box_name "$box")"
         tag="$(get_image_tag "$box")"
-        status="$(container_status "$name")"
+        status="$(container_status "$name" "$(root_flag "$box")")"
         case "$status" in
             running)     color="$GREEN" ;;
             stopped)     color="$YELLOW" ;;
@@ -192,9 +203,10 @@ cmd_list() {
 
 cmd_enter() {
     validate_box "$1"
-    local name
+    local name rflag
     name="$(get_box_name "$1")"
-    exec distrobox enter "$name"
+    rflag="$(root_flag "$1")"
+    exec distrobox enter $rflag "$name"
 }
 
 cmd_set_image() {
@@ -264,18 +276,20 @@ cmd_pull() {
 
 cmd_stop() {
     validate_box "$1"
-    local name
+    local name rflag
     name="$(get_box_name "$1")"
-    distrobox stop --yes "$name"
+    rflag="$(root_flag "$1")"
+    distrobox stop $rflag --yes "$name"
 }
 
 cmd_status() {
     validate_box "$1"
-    local box="$1" name tag status image
+    local box="$1" name tag status image rflag
     name="$(get_box_name "$box")"
     tag="$(get_image_tag "$box")"
     image="$(get_image_line "$box")"
-    status="$(container_status "$name")"
+    rflag="$(root_flag "$box")"
+    status="$(container_status "$name" "$rflag")"
 
     printf "${BOLD}Box:${RESET}     %s\n" "$box"
     printf "${BOLD}Name:${RESET}    %s\n" "$name"
@@ -289,7 +303,7 @@ cmd_status() {
 
     if [[ "$status" != "not created" ]]; then
         printf "${BOLD}Build info:${RESET}\n"
-        distrobox enter "$name" -- cat /etc/box-build-info 2>/dev/null \
+        distrobox enter $rflag "$name" -- cat /etc/box-build-info 2>/dev/null \
             | sed 's/^/  /' \
             || printf "  ${YELLOW}(not available)${RESET}\n"
     fi
