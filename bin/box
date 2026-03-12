@@ -18,6 +18,20 @@ _detect_owner() {
     echo "${remote%%/*}"
 }
 
+compile_toml() {
+    local box="$1"
+    python3 "$REPO_ROOT/scripts/compile-box-toml.py" "$REPO_ROOT/$box"
+}
+
+ensure_compiled() {
+    local box="$1"
+    local toml="$REPO_ROOT/$box/box.toml"
+    local ini="$REPO_ROOT/$box/distrobox.ini"
+    if [[ ! -f "$ini" || "$toml" -nt "$ini" ]]; then
+        compile_toml "$box"
+    fi
+}
+
 OWNER="${BOX_OWNER:-$(_detect_owner)}"
 : "${OWNER:=gablank}"
 
@@ -37,13 +51,13 @@ ${BOLD}USAGE${RESET}
     box <command> [arguments]
 
 ${BOLD}COMMANDS${RESET}
-    init        [owner]      Set image registry owner in all ini files (default: git remote)
+    init        [owner]      Set image registry owner in all box.toml files (default: git remote)
     list                     List all boxes with status and image tag
     enter       <box>        Enter a box
-    set-image   <box> [tag]  Set the image tag in the ini (default: latest)
-    assemble    <box>        Create/recreate box from current ini
+    set-image   <box> [tag]  Set the image tag in box.toml (default: latest)
+    assemble    <box>        Create/recreate box from box.toml
     assemble-all             Assemble all boxes
-    pull        <box> [tag]  Pull image without rebuilding (default: current tag in ini)
+    pull        <box> [tag]  Pull image without rebuilding (default: current tag)
     stop        <box>        Stop a box
     status      <box>        Show detailed box info and build metadata
     logs        <box>        Show init log
@@ -58,7 +72,7 @@ EOF
 discover_boxes() {
     local dir
     for dir in "$REPO_ROOT"/*/; do
-        if [[ -f "$dir/distrobox.ini" ]]; then
+        if [[ -f "$dir/box.toml" ]]; then
             basename "$dir"
         fi
     done
@@ -73,8 +87,8 @@ discover_boxes_for_help() {
 
 validate_box() {
     local box="$1"
-    if [[ ! -f "$REPO_ROOT/$box/distrobox.ini" ]]; then
-        printf "${RED}Error:${RESET} '%s' is not a valid box (no %s/distrobox.ini found)\n" "$box" "$box" >&2
+    if [[ ! -f "$REPO_ROOT/$box/box.toml" ]]; then
+        printf "${RED}Error:${RESET} '%s' is not a valid box (no %s/box.toml found)\n" "$box" "$box" >&2
         printf "Available boxes: %s\n" "$(discover_boxes | tr '\n' ' ')" >&2
         exit 1
     fi
@@ -82,11 +96,13 @@ validate_box() {
 
 get_box_name() {
     local box="$1"
+    ensure_compiled "$box"
     grep '^name=' "$REPO_ROOT/$box/distrobox.ini" | head -1 | cut -d= -f2
 }
 
 get_image_line() {
     local box="$1"
+    ensure_compiled "$box"
     grep '^image=' "$REPO_ROOT/$box/distrobox.ini" | head -1 | cut -d= -f2
 }
 
@@ -98,10 +114,11 @@ get_image_tag() {
 
 set_image_tag() {
     local box="$1" tag="$2"
-    local ini="$REPO_ROOT/$box/distrobox.ini"
+    local toml="$REPO_ROOT/$box/box.toml"
     local image_base
     image_base="$(get_image_line "$box" | sed 's|:[^:]*$||')"
-    sed -i "s|^image=.*|image=${image_base}:${tag}|" "$ini"
+    sed -i "s|^image = .*|image = \"${image_base}:${tag}\"|" "$toml"
+    compile_toml "$box"
 }
 
 container_status() {
@@ -145,12 +162,13 @@ cmd_init() {
         exit 1
     fi
     printf "${CYAN}Configuring boxes for GitHub owner: %s${RESET}\n\n" "$owner"
-    local box ini tag new_image
+    local box toml tag new_image
     for box in $(discover_boxes); do
-        ini="$REPO_ROOT/$box/distrobox.ini"
+        toml="$REPO_ROOT/$box/box.toml"
         tag="$(get_image_tag "$box")"
         new_image="$REGISTRY/$owner/box-$box:$tag"
-        sed -i "s|^image=.*|image=$new_image|" "$ini"
+        sed -i "s|^image = .*|image = \"$new_image\"|" "$toml"
+        compile_toml "$box"
         printf "  %-10s %s\n" "$box" "$new_image"
     done
     printf "\n${GREEN}Done. Run 'box assemble <box>' to apply the new image.${RESET}\n"
@@ -186,6 +204,9 @@ cmd_set_image() {
     printf "${GREEN}Image for %s set to: %s${RESET}\n" "$box" "$(get_image_line "$box")"
 }
 
+# Auto-create host directories for volume= mounts before assembling.
+# Only volume= lines are processed — these must be directories.
+# Non-directory mounts (sockets, files) belong in additional_flags --volume.
 ensure_host_dirs() {
     local ini="$1" line host_path
     while IFS= read -r line; do
@@ -210,7 +231,9 @@ ensure_host_dirs() {
 
 cmd_assemble() {
     validate_box "$1"
-    local box="$1" name
+    local box="$1"
+    compile_toml "$box"
+    local name
     name="$(get_box_name "$box")"
     printf "${CYAN}Assembling %s (%s) from %s...${RESET}\n" "$box" "$name" "$(get_image_line "$box")"
     ensure_host_dirs "$REPO_ROOT/$box/distrobox.ini"
@@ -275,6 +298,7 @@ cmd_status() {
 cmd_logs() {
     validate_box "$1"
     local box="$1" home
+    ensure_compiled "$box"
     home="$(grep '^home=' "$REPO_ROOT/$box/distrobox.ini" | head -1 | cut -d= -f2)"
     home="$(eval echo "$home")"
     local logfile="$home/.box-bootstrap.log"
@@ -410,11 +434,11 @@ _box() {
 _box_commands() {
     local -a cmds
     cmds=(
-        'init:set image registry owner in all ini files'
+        'init:set image registry owner in all box.toml files'
         'list:list all boxes with status and image tag'
         'enter:enter a box'
-        'set-image:set the image tag in the ini'
-        'assemble:create/recreate box from current ini'
+        'set-image:set the image tag in box.toml'
+        'assemble:create/recreate box from box.toml'
         'assemble-all:assemble all boxes'
         'pull:pull image without rebuilding'
         'stop:stop a box'

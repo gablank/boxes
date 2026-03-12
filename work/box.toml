@@ -1,0 +1,25 @@
+[distrobox]
+name = "workbox"
+image = "ghcr.io/gablank/box-work:latest"
+home = "${HOME}/distrobox/workbox/home"
+replace = true
+pull = true
+start_now = true
+init = false
+unshare_netns = true
+exported_apps = "google-chrome-stable"
+pre_init_hooks = "export SHELL=/usr/bin/zsh"
+init_hooks = 'su - ${container_user_name} -c "bash /usr/local/share/box-init/init-user.sh" && rm -f /var/run/tailscale/tailscaled.sock && tailscaled --statedir=/var/lib/tailscale &'
+additional_flags = "--security-opt seccomp=unconfined --device /dev/net/tun --cap-add NET_ADMIN --cap-add NET_RAW"
+
+# Directories — auto-created on host by "box assemble", emitted as volume= lines
+[[mount-dir]]
+host = "${HOME}/distrobox/workbox/tailscale"
+container = "/var/lib/tailscale"
+options = "rw,z"
+
+# Files/sockets — must already exist, appended to additional_flags as --volume
+[[mount-file]]
+host = "${XDG_RUNTIME_DIR}/podman/podman.sock"
+container = "/podman.sock"
+options = "rw"

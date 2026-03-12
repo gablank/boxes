@@ -1,3 +1,4 @@
+*/distrobox.ini
 *.log
 .env
 .env.*

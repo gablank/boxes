@@ -12,7 +12,9 @@ Two boxes exist: `priv` (personal dev) and `work` (adds kubectl, k9s, qemu, glab
 
 **Image layering:** `Containerfile.base` builds a shared base image with all common packages. Each box (`priv/Containerfile`, `work/Containerfile`) is a thin layer on top via `ARG BASE_IMAGE`. CI injects the fork owner's registry into the build arg.
 
-**CLI:** `bin/box` is the host-side management tool (pure Bash, ~530 lines, 13 commands). Auto-discovers boxes by scanning for `*/distrobox.ini`. Box argument is the directory name (`priv`, `work`), not the container name (`privbox`, `workbox`).
+**CLI:** `bin/box` is the host-side management tool (pure Bash, ~530 lines, 13 commands). Auto-discovers boxes by scanning for `*/box.toml`. Box argument is the directory name (`priv`, `work`), not the container name (`privbox`, `workbox`).
+
+**TOML config:** Each box has a `box.toml` (source of truth) that compiles to `distrobox.ini` (generated, gitignored). The compiler is `scripts/compile-box-toml.py` (Python 3.11+, uses stdlib `tomllib`). `[[mount-dir]]` entries become `volume=` lines (auto-created on host). `[[mount-file]]` entries become `--volume` flags in `additional_flags` (must already exist).
 
 **Runtime init:** `scripts/init-user.sh` runs once on first container start via `init_hooks` in `distrobox.ini`.
 
@@ -52,10 +54,12 @@ grep -oP '^\s+\K[a-z-]+(?=\))' bin/box  # extract case arms
 - All-boxes packages go in `Containerfile.base`; box-specific in `<box>/Containerfile`
 - Build context is repo root, not the box subdirectory
 
-### distrobox.ini
+### box.toml / distrobox.ini
+- `box.toml` is the source of truth; `distrobox.ini` is generated (gitignored) — never edit ini directly
 - Host-side env vars (`${HOME}`, `${XDG_RUNTIME_DIR}`) expanded by distrobox at runtime
 - In `init_hooks`, use `${container_user_name}` (NOT `${USER}` — unbound during eval)
 - All boxes require `--security-opt seccomp=unconfined` for bubblewrap/bwrap
+- Directory mounts go in `[[mount-dir]]`; file/socket mounts go in `[[mount-file]]`
 
 ### Git commits
 - Format: `<type>(<scope>): <message>` — types: feat, fix, refactor, docs, ci, chore
@@ -64,7 +68,7 @@ grep -oP '^\s+\K[a-z-]+(?=\))' bin/box  # extract case arms
 
 ## Maintenance Contracts
 
-When adding a new box, you must update: the box's `Containerfile`, `distrobox.ini`, CI path filters in `build.yml` (both the `changes` filter and the `box_matrix` generation), and the README boxes table.
+When adding a new box, you must update: the box's `Containerfile`, `box.toml`, CI path filters in `build.yml` (both the `changes` filter and the `box_matrix` generation), and the README boxes table.
 
 When adding a new `bin/box` command: add to `_BOX_COMMANDS` array, add case dispatch, and verify completions stay in sync (CI enforces this).
 
