@@ -17,6 +17,10 @@ Each box is an [Arch Linux](https://archlinux.org/) container with a full develo
 
 - [podman](https://podman.io/docs/installation)
 - [distrobox](https://distrobox.it/#installation) ≥ 1.7
+- Passwordless `sudo` for podman (required for rootful containers):
+  ```bash
+  sudo EDITOR="tee" visudo -f /etc/sudoers.d/distrobox-rootful <<< "$USER ALL=(ALL) NOPASSWD: /usr/bin/podman"
+  ```
 
 ### 1. Clone and run setup
 
@@ -146,11 +150,11 @@ Each image is tagged `latest` and `YYYY-MM-DDTHHMM` (UTC, e.g. `2026-03-04T0300`
 Containerfile.base      Shared base image
 priv/
   Containerfile         Thin layer on base for privbox
-  distrobox.ini         Container definition
+  box.toml              Container definition (source of truth)
   local-bin/            Scripts installed only into privbox
 work/
   Containerfile         Thin layer on base for workbox
-  distrobox.ini         Container definition
+  box.toml              Container definition (source of truth)
   local-bin/            Scripts installed only into workbox
 local-bin/              Scripts installed into ALL boxes
 scripts/
