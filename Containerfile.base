@@ -45,14 +45,14 @@ RUN git clone https://aur.archlinux.org/yay.git . && \
 
 # AUR packages, grouped by purpose:
 #   IDEs / editors: visual-studio-code-bin, cursor-bin
-#   Zsh framework + vi->vim alias: oh-my-zsh-git, vi-vim-symlink
+#   Zsh framework: oh-my-zsh-git
 #   Browser (exported from workbox via distrobox): google-chrome
 #   Database CLI tools (mongodump, mongorestore, etc.): mongodb-tools
 #   GCP CLI + GKE auth plugin for kubectl: google-cloud-cli, gke-gcloud-auth-plugin
 #   AI coding assistant (Node.js CLI): claude-code
 RUN yay -S --noconfirm --needed \
     visual-studio-code-bin cursor-bin \
-    oh-my-zsh-git vi-vim-symlink \
+    oh-my-zsh-git \
     google-chrome \
     mongodb-tools \
     google-cloud-cli google-cloud-cli-component-gke-gcloud-auth-plugin \
@@ -60,6 +60,9 @@ RUN yay -S --noconfirm --needed \
 
 USER root
 WORKDIR /
+
+# vi -> vim symlink (vi-vim-symlink AUR package no longer exists)
+RUN ln -sf /usr/bin/vim /usr/bin/vi
 
 # Claude Code seccomp sandbox: provides BPF filters to block unix domain sockets
 RUN npm install -g @anthropic-ai/sandbox-runtime
