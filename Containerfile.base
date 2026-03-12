@@ -33,6 +33,14 @@ RUN pacman -S --noconfirm --needed \
     bubblewrap socat libseccomp \
     tailscale
 
+# Switch iptables to nftables backend (host kernel lacks ip_tables module)
+RUN ln -sf /usr/bin/xtables-nft-multi /usr/bin/iptables && \
+    ln -sf /usr/bin/xtables-nft-multi /usr/bin/iptables-restore && \
+    ln -sf /usr/bin/xtables-nft-multi /usr/bin/iptables-save && \
+    ln -sf /usr/bin/xtables-nft-multi /usr/sbin/iptables && \
+    ln -sf /usr/bin/xtables-nft-multi /usr/sbin/iptables-restore && \
+    ln -sf /usr/bin/xtables-nft-multi /usr/sbin/iptables-save
+
 # makepkg cannot run as root
 RUN useradd -m -G wheel builduser && \
     printf 'builduser ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/builduser
