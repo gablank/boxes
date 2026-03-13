@@ -128,6 +128,13 @@ RUN printf '#!/bin/sh\nexec gio open "$@"\n' > /usr/local/bin/xdg-open && \
 RUN printf 'export ZSH=/usr/share/oh-my-zsh\nZSH_THEME="robbyrussell"\nplugins=(git)\nsource "$ZSH/oh-my-zsh.sh"\n' \
         > /etc/skel/.zshrc
 
+# Tailscale systemd override: use a custom socket path so distrobox-enter
+# can't overwrite it with a host symlink on every entry.
+RUN mkdir -p /etc/systemd/system/tailscaled.service.d && \
+    printf '[Service]\nExecStart=\nExecStart=/usr/bin/tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/var/run/tailscale/box.sock --port 41641\n' \
+        > /etc/systemd/system/tailscaled.service.d/socket-path.conf && \
+    systemctl enable tailscaled.service
+
 COPY scripts/init-user.sh /usr/local/share/box-init/init-user.sh
 COPY scripts/shell-init.sh /usr/local/share/box-init/shell-init.sh
 RUN chmod +x /usr/local/share/box-init/init-user.sh /usr/local/share/box-init/shell-init.sh
