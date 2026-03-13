@@ -6,8 +6,8 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
 REGISTRY="ghcr.io"
 
-_BOX_COMMANDS=(init list enter set-image assemble assemble-all pull stop status logs images completions help)
-_BOX_COMMANDS_WITH_BOX=(enter set-image assemble pull stop status logs images)
+_BOX_COMMANDS=(init list enter set-image build assemble assemble-all pull stop status logs images completions help)
+_BOX_COMMANDS_WITH_BOX=(enter set-image build assemble pull stop status logs images)
 
 _detect_owner() {
     local remote
@@ -55,9 +55,10 @@ ${BOLD}COMMANDS${RESET}
     list                     List all boxes with status and image tag
     enter       <box>        Enter a box
     set-image   <box> [tag]  Set the image tag in box.toml (default: latest)
-    assemble    <box>        Create/recreate box from box.toml
-    assemble-all             Assemble all boxes
-    pull        <box> [tag]  Pull image without rebuilding (default: current tag)
+    build       <box>        Build container image locally (base + box). Does not restart.
+    assemble    <box>        Recreate box from box.toml. ${RED}Stops the box.${RESET}
+    assemble-all             Recreate all boxes. ${RED}Stops all boxes.${RESET}
+    pull        <box> [tag]  Pull image from registry (default: current tag). Does not restart.
     stop        <box>        Stop a box
     status      <box>        Show detailed box info and build metadata
     logs        <box>        Show init log
@@ -241,6 +242,36 @@ ensure_host_dirs() {
     fi
 }
 
+cmd_build() {
+    validate_box "$1"
+    local box="$1"
+    local base_image="$REGISTRY/$OWNER/box-base:latest"
+    local box_image="$REGISTRY/$OWNER/box-$box:latest"
+    local date_tag
+    date_tag="$(date -u '+%Y-%m-%dT%H%M')"
+
+    printf "${CYAN}Building base image...${RESET}\n"
+    podman build \
+        -f "$REPO_ROOT/Containerfile.base" \
+        --build-arg "BUILD_DATE=$date_tag" \
+        --build-arg "BUILD_SHA=$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || printf 'local')" \
+        -t "$base_image" \
+        "$REPO_ROOT"
+
+    printf "\n${CYAN}Building box-%s image...${RESET}\n" "$box"
+    podman build \
+        -f "$REPO_ROOT/$box/Containerfile" \
+        --build-arg "BASE_IMAGE=$base_image" \
+        --build-arg "BUILD_DATE=$date_tag" \
+        --build-arg "BUILD_SHA=$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || printf 'local')" \
+        -t "$box_image" \
+        "$REPO_ROOT"
+
+    printf "\n${GREEN}Built %s${RESET}\n" "$box_image"
+    printf "Image built. The running box is ${BOLD}not affected${RESET}.\n"
+    printf "Run ${BOLD}box assemble %s${RESET} to recreate the container from this image (${RED}stops the box${RESET}).\n" "$box"
+}
+
 cmd_assemble() {
     validate_box "$1"
     local box="$1"
@@ -397,12 +428,12 @@ _box_completion() {
     commands="$(box --list-boxes 2>/dev/null | tr '\n' ' ')"
 
     if [[ $cword -eq 1 ]]; then
-        COMPREPLY=( $(compgen -W "init list enter set-image assemble assemble-all pull stop status logs images completions help" -- "$cur") )
+        COMPREPLY=( $(compgen -W "init list enter set-image build assemble assemble-all pull stop status logs images completions help" -- "$cur") )
         return 0
     fi
 
     case "${words[1]}" in
-        enter|set-image|assemble|pull|stop|status|logs|images)
+        enter|set-image|build|assemble|pull|stop|status|logs|images)
             if [[ $cword -eq 2 ]]; then
                 COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
             fi
@@ -434,7 +465,7 @@ _box() {
     case $state in
         args)
             case $words[1] in
-                enter|set-image|assemble|pull|stop|status|logs|images)
+                enter|set-image|build|assemble|pull|stop|status|logs|images)
                     _arguments '1: :_box_boxes'
                     ;;
                 completions)
@@ -452,9 +483,10 @@ _box_commands() {
         'list:list all boxes with status and image tag'
         'enter:enter a box'
         'set-image:set the image tag in box.toml'
-        'assemble:create/recreate box from box.toml'
-        'assemble-all:assemble all boxes'
-        'pull:pull image without rebuilding'
+        'build:build container image locally, does not restart'
+        'assemble:recreate box from box.toml (stops the box)'
+        'assemble-all:recreate all boxes (stops all boxes)'
+        'pull:pull image from registry, does not restart'
         'stop:stop a box'
         'status:show detailed box info and build metadata'
         'logs:show init log'
@@ -554,6 +586,10 @@ case "$command" in
     set-image)
         [[ $# -ge 1 ]] || { printf "${RED}Usage: box set-image <box> [tag]${RESET}\n" >&2; exit 1; }
         cmd_set_image "$1" "${2:-}"
+        ;;
+    build)
+        [[ $# -ge 1 ]] || { printf "${RED}Usage: box build <box>${RESET}\n" >&2; exit 1; }
+        cmd_build "$1"
         ;;
     assemble)
         [[ $# -ge 1 ]] || { printf "${RED}Usage: box assemble <box>${RESET}\n" >&2; exit 1; }
