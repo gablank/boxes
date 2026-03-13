@@ -19,12 +19,15 @@ if ! grep -qF "$source_line" ~/.zshrc 2>/dev/null; then
     printf '\n%s\n' "$source_line" >> ~/.zshrc
 fi
 
-# --- Host D-Bus for desktop-launched apps ---
-# Desktop entries bypass shell init, so set the host bus in /etc/environment
-# where PAM reads it for all sessions (including machinectl shell).
-readonly host_bus="unix:path=/run/host/run/user/$(id -u)/bus"
+# --- Host sockets for desktop-launched apps ---
+# Desktop entries bypass shell init, so set these in /etc/environment
+# where PAM reads them for all sessions (including machinectl shell).
+readonly host_runtime="/run/host/run/user/$(id -u)"
 if ! grep -qF 'DBUS_SESSION_BUS_ADDRESS' /etc/environment 2>/dev/null; then
-    printf 'DBUS_SESSION_BUS_ADDRESS=%s\n' "$host_bus" | sudo tee -a /etc/environment >/dev/null
+    printf 'DBUS_SESSION_BUS_ADDRESS=unix:path=%s/bus\n' "$host_runtime" | sudo tee -a /etc/environment >/dev/null
+fi
+if ! grep -qF 'PULSE_SERVER' /etc/environment 2>/dev/null; then
+    printf 'PULSE_SERVER=unix:%s/pulse/native\n' "$host_runtime" | sudo tee -a /etc/environment >/dev/null
 fi
 
 printf '[box-init] user init done\n'

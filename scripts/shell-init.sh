@@ -4,7 +4,8 @@
 
 # --- Environment ---
 export DOCKER_HOST="unix:///podman.sock"
-cd ~
+
+[[ "$(pwd)" == "/run/host/home/awenhaug" ]] && cd ~
 
 # --- D-Bus ---
 # Use the host's session bus so xdg-desktop-portal works for screen sharing.
@@ -12,6 +13,14 @@ cd ~
 # dbus sits at the default path, so we point at the host's socket explicitly.
 if [[ -S "/run/host${XDG_RUNTIME_DIR}/bus" ]]; then
     export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/host${XDG_RUNTIME_DIR}/bus"
+fi
+
+# --- Audio ---
+# Point PulseAudio/PipeWire clients at the host's sockets. The container's own
+# sockets at /run/user/*/pulse and /run/user/*/pipewire-0 are dead (created by
+# distrobox-enter but not connected to anything in init containers).
+if [[ -S "/run/host${XDG_RUNTIME_DIR}/pulse/native" ]]; then
+    export PULSE_SERVER="unix:/run/host${XDG_RUNTIME_DIR}/pulse/native"
 fi
 
 # --- Tailscale ---
