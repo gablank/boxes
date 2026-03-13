@@ -250,24 +250,29 @@ cmd_build() {
     local date_tag
     date_tag="$(date -u '+%Y-%m-%dT%H%M')"
 
+    local build_sha local_tag
+    build_sha="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || printf 'local')"
+    local_tag="local-${date_tag}"
+
     printf "${CYAN}Building base image...${RESET}\n"
-    podman build \
+    podman build --no-cache \
         -f "$REPO_ROOT/Containerfile.base" \
         --build-arg "BUILD_DATE=$date_tag" \
-        --build-arg "BUILD_SHA=$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || printf 'local')" \
+        --build-arg "BUILD_SHA=$build_sha" \
         -t "$base_image" \
         "$REPO_ROOT"
 
     printf "\n${CYAN}Building box-%s image...${RESET}\n" "$box"
-    podman build \
+    podman build --no-cache \
         -f "$REPO_ROOT/$box/Containerfile" \
         --build-arg "BASE_IMAGE=$base_image" \
         --build-arg "BUILD_DATE=$date_tag" \
-        --build-arg "BUILD_SHA=$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || printf 'local')" \
+        --build-arg "BUILD_SHA=$build_sha" \
         -t "$box_image" \
+        -t "$REGISTRY/$OWNER/box-$box:$local_tag" \
         "$REPO_ROOT"
 
-    printf "\n${GREEN}Built %s${RESET}\n" "$box_image"
+    printf "\n${GREEN}Built %s (%s)${RESET}\n" "$box_image" "$local_tag"
     printf "Image built. The running box is ${BOLD}not affected${RESET}.\n"
     printf "Run ${BOLD}box assemble %s${RESET} to recreate the container from this image (${RED}stops the box${RESET}).\n" "$box"
 }
@@ -401,9 +406,22 @@ cmd_images() {
     next_tag="$ini_tag"
     [[ "$ini_tag" == "latest" && -n "$has_latest" && -n "$latest_date" ]] && next_tag="$latest_date"
 
+    # Collect local-only tags from podman images
+    local local_tags
+    local_tags="$(podman images --format '{{.Tag}}' "$REGISTRY/$repo" 2>/dev/null \
+        | grep '^local-' | sort -r || true)"
+
     printf "${BOLD}Available versions for box-%s:${RESET}\n\n" "$box"
     printf "${BOLD}%-24s %-12s %s${RESET}\n" "TAG" "AGE" "NOTES"
 
+    # Show local builds first
+    while IFS= read -r tag; do
+        [[ -z "$tag" ]] && continue
+        local local_date="${tag#local-}"
+        printf "%-24s %-12s %b\n" "$tag" "$(time_ago "$local_date")" "${CYAN}local${RESET}"
+    done <<< "$local_tags"
+
+    # Show registry tags
     while IFS= read -r tag; do
         [[ -z "$tag" ]] && continue
         local display_tag="$tag"
