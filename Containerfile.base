@@ -135,6 +135,11 @@ RUN mkdir -p /etc/systemd/system/tailscaled.service.d && \
         > /etc/systemd/system/tailscaled.service.d/socket-path.conf && \
     systemctl enable tailscaled.service
 
+# Mask the user-session D-Bus so the container's systemd --user never starts its
+# own bus. All apps (terminal and desktop-launched) use the host bus instead,
+# which is required for xdg-desktop-portal (screen sharing) and keyring access.
+RUN systemctl --global mask dbus-daemon.service dbus-broker.service
+
 COPY scripts/init-user.sh /usr/local/share/box-init/init-user.sh
 COPY scripts/shell-init.sh /usr/local/share/box-init/shell-init.sh
 RUN chmod +x /usr/local/share/box-init/init-user.sh /usr/local/share/box-init/shell-init.sh
