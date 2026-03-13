@@ -360,8 +360,10 @@ cmd_logs() {
 }
 
 get_running_build_date() {
-    local name="$1"
-    podman exec "$name" cat /etc/box-build-info 2>/dev/null \
+    local name="$1" box="$2"
+    local podman_cmd="podman"
+    is_rootful "$box" && podman_cmd="sudo podman"
+    $podman_cmd exec "$name" cat /etc/box-build-info 2>/dev/null \
         | grep '^build_date=' | cut -d= -f2 || true
 }
 
@@ -379,7 +381,7 @@ cmd_images() {
     local repo="$OWNER/box-$box"
     local ini_tag current_build_date
     ini_tag="$(get_image_tag "$box")"
-    current_build_date="$(get_running_build_date "$(get_box_name "$box")")"
+    current_build_date="$(get_running_build_date "$(get_box_name "$box")" "$box")"
 
     local token
     token="$(curl -sf \
@@ -418,7 +420,9 @@ cmd_images() {
     while IFS= read -r tag; do
         [[ -z "$tag" ]] && continue
         local local_date="${tag#local-}"
-        printf "%-24s %-12s %b\n" "$tag" "$(time_ago "$local_date")" "${CYAN}local${RESET}"
+        local notes="${CYAN}local${RESET}"
+        [[ -n "$current_build_date" && "$local_date" == "$current_build_date" ]] && notes+="  ${GREEN}← current${RESET}"
+        printf "%-24s %-12s %b\n" "$tag" "$(time_ago "$local_date")" "$notes"
     done <<< "$local_tags"
 
     # Show registry tags
