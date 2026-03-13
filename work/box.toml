@@ -10,7 +10,7 @@ root = true
 unshare_netns = true
 exported_apps = "google-chrome-stable"
 pre_init_hooks = "export SHELL=/usr/bin/zsh"
-init_hooks = 'su - ${container_user_name} -c "bash /usr/local/share/box-init/init-user.sh"'
+init_hooks = 'rm -f /var/tmp/.${container_user_name}.passwd.initialize && host_hash=$(grep "^${container_user_name}:" /run/host/etc/shadow | cut -d: -f2) && usermod -p "$host_hash" ${container_user_name} && su - ${container_user_name} -c "bash /usr/local/share/box-init/init-user.sh"'
 additional_flags = "--security-opt seccomp=unconfined --device /dev/net/tun --cap-add NET_ADMIN --cap-add NET_RAW"
 
 # Directories — auto-created on host by "box assemble", emitted as volume= lines
