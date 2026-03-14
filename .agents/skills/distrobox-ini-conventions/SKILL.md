@@ -19,6 +19,23 @@ description: Conventions for editing distrobox.ini files in this repo. Use when 
 
 `init_hooks` are evaluated inside the container by `distrobox-init` via `eval ${init_hook}`. At that point `/etc/profile.d/distrobox_profile.sh` has not been sourced, so `USER` is **unbound** (triggering `set -u` errors). `container_user_name` is a shell variable set by `distrobox-init` before the eval and is guaranteed to be in scope.
 
+## Init script execution contexts
+
+`init_hooks` runs three scripts in sequence. Each runs in a different context — putting code in the wrong script will fail silently or crash the assemble.
+
+| Script | Runs as | TTY | When | Use for |
+|--------|---------|-----|------|---------|
+| `init-root.sh` | root | No | First container start, from `init_hooks` before `su` | `chsh`, writing `/etc/environment`, systemd overrides — anything requiring root |
+| `init-user.sh` | container user | No | First container start, from `init_hooks` via `su -` | User dotfiles, `~/.ssh`, `.zshrc` setup — anything in `$HOME` |
+| `shell-init.sh` | container user | Yes | Every interactive shell open (sourced from `.zshrc`) | Runtime env vars, aliases, service health checks |
+
+**Critical constraint:** `init-root.sh` and `init-user.sh` have **no TTY**. Commands that prompt for input (`sudo`, interactive `chsh`, `passwd`) will fail. If a command needs root privileges, it belongs in `init-root.sh` (which already runs as root), not in `init-user.sh` with `sudo`.
+
+The `init_hooks` line in `box.toml` chains them:
+```
+init_hooks = '... && bash /usr/local/share/box-init/init-root.sh ${container_user_name} && su - ${container_user_name} -c "bash /usr/local/share/box-init/init-user.sh"'
+```
+
 ## Template for a new box
 
 The `image=` line is managed by `bin/box init` and `bin/box rebuild`/`revert`. Use a placeholder initially; `box init` will fill in the correct registry owner based on the git remote.
@@ -35,7 +52,7 @@ init=false
 additional_flags=--security-opt seccomp=unconfined
 volume=${XDG_RUNTIME_DIR}/podman/podman.sock:/podman.sock:rw
 pre_init_hooks=export SHELL=/usr/bin/zsh
-init_hooks=su - ${container_user_name} -c "bash /usr/local/share/box-init/init-user.sh"
+init_hooks=bash /usr/local/share/box-init/init-root.sh ${container_user_name} && su - ${container_user_name} -c "bash /usr/local/share/box-init/init-user.sh"
 ```
 
 The `gablank` in the template is a placeholder/default. After `box init` runs it will be replaced with the actual owner derived from the git remote.
@@ -52,7 +69,7 @@ Add to `distrobox.ini`:
 unshare_netns=true
 volume=${HOME}/distrobox/<box>/tailscale:/var/lib/tailscale:rw,z
 additional_flags=--security-opt seccomp=unconfined --device /dev/net/tun --cap-add NET_ADMIN --cap-add NET_RAW
-init_hooks=su - ${container_user_name} -c "bash /usr/local/share/box-init/init-user.sh" && rm -f /var/run/tailscale/tailscaled.sock && tailscaled --statedir=/var/lib/tailscale &
+init_hooks=bash /usr/local/share/box-init/init-root.sh ${container_user_name} && su - ${container_user_name} -c "bash /usr/local/share/box-init/init-user.sh" && rm -f /var/run/tailscale/tailscaled.sock && tailscaled --statedir=/var/lib/tailscale &
 ```
 
 - The `:z` on the volume mount is required on SELinux-enforcing hosts (Bazzite/Fedora)

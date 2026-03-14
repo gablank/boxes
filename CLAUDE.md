@@ -16,7 +16,7 @@ Two boxes exist: `priv` (personal dev) and `work` (adds kubectl, k9s, qemu, glab
 
 **TOML config:** Each box has a `box.toml` (source of truth) that compiles to `distrobox.ini` (generated, gitignored). The compiler is `scripts/compile-box-toml.py` (Python 3.11+, uses stdlib `tomllib`). `[[mount-dir]]` entries become `volume=` lines (auto-created on host). `[[mount-file]]` entries become `--volume` flags in `additional_flags` (must already exist).
 
-**Runtime init:** `scripts/init-user.sh` runs once on first container start via `init_hooks` in `distrobox.ini`.
+**Runtime init:** `init_hooks` in `box.toml` chains two scripts on first container start: `scripts/init-root.sh` (runs as root, no TTY — for `chsh`, `/etc/environment`) then `scripts/init-user.sh` (runs as container user via `su -`, no TTY — for dotfiles, `~/.ssh`). `scripts/shell-init.sh` is sourced from `.zshrc` on every shell open (user, TTY available). **No script called from `init_hooks` has a TTY — `sudo`, interactive prompts, and password input will fail.** Root-level operations must go in `init-root.sh`, not `init-user.sh` with `sudo`.
 
 ## CI/CD
 

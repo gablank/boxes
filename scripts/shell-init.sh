@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Sourced from ~/.zshrc — all box runtime env and services live here.
+# Execution context: sourced from ~/.zshrc as the CONTAINER USER in an
+# interactive shell. TTY is available. Unlike init-root.sh and init-user.sh,
+# this runs on every shell open, not just first container start.
+# All box runtime env and services live here.
 # Changes to this file take effect on next shell open (no box rebuild needed).
 
 # --- Environment ---
