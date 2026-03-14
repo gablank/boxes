@@ -56,12 +56,12 @@ ${BOLD}COMMANDS${RESET}
     enter       <box>        Enter a box
     set-image   <box> [tag]  Set the image tag in box.toml (default: latest)
     build       <box>        Build container image locally (base + box). Does not restart.
-    assemble    <box>        Recreate box from box.toml. ${RED}Stops the box.${RESET}
+    assemble    [-v] <box>   Recreate box from box.toml. ${RED}Stops the box.${RESET} -v shows container logs.
     assemble-all             Recreate all boxes. ${RED}Stops all boxes.${RESET}
     pull        <box> [tag]  Pull image from registry (default: current tag). Does not restart.
     stop        <box>        Stop a box
     status      <box>        Show detailed box info and build metadata
-    logs        <box>        Show init log
+    logs        <box> [...]  Show container logs (pass-through to podman logs)
     images      <box>        List available image versions on ghcr.io
     completions <shell>      Print or install shell completions (bash|zsh|install)
 
@@ -278,6 +278,8 @@ cmd_build() {
 }
 
 cmd_assemble() {
+    local verbose=false
+    if [[ "${1:-}" == "-v" ]]; then verbose=true; shift; fi
     validate_box "$1"
     local box="$1"
     compile_toml "$box"
@@ -285,7 +287,19 @@ cmd_assemble() {
     name="$(get_box_name "$box")"
     printf "${CYAN}Assembling %s (%s) from %s...${RESET}\n" "$box" "$name" "$(get_image_line "$box")"
     ensure_host_dirs "$REPO_ROOT/$box/distrobox.ini"
-    distrobox assemble create --file "$REPO_ROOT/$box/distrobox.ini"
+    local rc=0
+    distrobox assemble create --file "$REPO_ROOT/$box/distrobox.ini" || rc=$?
+    if [[ "$verbose" == true ]]; then
+        printf "\n${CYAN}Container logs:${RESET}\n"
+        cmd_logs "$box"
+    fi
+    if [[ $rc -ne 0 ]]; then
+        printf "${RED}Assemble failed (exit %d).${RESET}\n" "$rc" >&2
+        if [[ "$verbose" != true ]]; then
+            printf "${YELLOW}Re-run with -v to see container logs.${RESET}\n" >&2
+        fi
+        return "$rc"
+    fi
     printf "${GREEN}Done.${RESET}\n"
 }
 
@@ -347,16 +361,11 @@ cmd_status() {
 
 cmd_logs() {
     validate_box "$1"
-    local box="$1" home
-    ensure_compiled "$box"
-    home="$(grep '^home=' "$REPO_ROOT/$box/distrobox.ini" | head -1 | cut -d= -f2)"
-    home="$(eval echo "$home")"
-    local logfile="$home/.box-bootstrap.log"
-    if [[ -f "$logfile" ]]; then
-        cat "$logfile"
-    else
-        printf "${YELLOW}No log file found at %s${RESET}\n" "$logfile"
-    fi
+    local box="$1"; shift
+    local name podman_cmd="podman"
+    name="$(get_box_name "$box")"
+    is_rootful "$box" && podman_cmd="sudo podman"
+    $podman_cmd logs "$@" "$name"
 }
 
 get_running_build_date() {
@@ -614,8 +623,8 @@ case "$command" in
         cmd_build "$1"
         ;;
     assemble)
-        [[ $# -ge 1 ]] || { printf "${RED}Usage: box assemble <box>${RESET}\n" >&2; exit 1; }
-        cmd_assemble "$1"
+        [[ $# -ge 1 ]] || { printf "${RED}Usage: box assemble [-v] <box>${RESET}\n" >&2; exit 1; }
+        cmd_assemble "$@"
         ;;
     assemble-all)
         cmd_assemble_all
@@ -633,8 +642,8 @@ case "$command" in
         cmd_status "$1"
         ;;
     logs)
-        [[ $# -ge 1 ]] || { printf "${RED}Usage: box logs <box>${RESET}\n" >&2; exit 1; }
-        cmd_logs "$1"
+        [[ $# -ge 1 ]] || { printf "${RED}Usage: box logs <box> [podman-log-flags...]${RESET}\n" >&2; exit 1; }
+        cmd_logs "$@"
         ;;
     images)
         [[ $# -ge 1 ]] || { printf "${RED}Usage: box images <box>${RESET}\n" >&2; exit 1; }
