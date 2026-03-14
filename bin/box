@@ -335,13 +335,14 @@ cmd_assemble_all() {
 cmd_pull() {
     validate_box "$1"
     local box="$1" tag="${2:-}"
-    local image
+    local image podman_cmd="podman"
+    is_rootful "$box" && podman_cmd="sudo podman"
     image="$(get_image_line "$box")"
     if [[ -n "$tag" ]]; then
         image="${image%:*}:${tag}"
     fi
     printf "${CYAN}Pulling %s...${RESET}\n" "$image"
-    podman pull "$image"
+    $podman_cmd pull "$image"
     printf "${GREEN}Done.${RESET}\n"
 }
 
@@ -445,8 +446,9 @@ cmd_images() {
     [[ "$ini_tag" == "latest" && -n "$has_latest" && -n "$latest_date" ]] && next_tag="$latest_date"
 
     # Collect local-only tags from podman images
-    local local_tags
-    local_tags="$(podman images --format '{{.Tag}}' "$REGISTRY/$repo" 2>/dev/null \
+    local local_tags podman_cmd="podman"
+    is_rootful "$box" && podman_cmd="sudo podman"
+    local_tags="$($podman_cmd images --format '{{.Tag}}' "$REGISTRY/$repo" 2>/dev/null \
         | grep '^local-' | sort -r || true)"
 
     printf "${BOLD}Available versions for box-%s:${RESET}\n\n" "$box"
