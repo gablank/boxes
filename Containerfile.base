@@ -21,7 +21,7 @@ RUN pacman-key --init && \
 #     libseccomp (BPF seccomp filters)
 #   VPN: tailscale (client for per-box tailnets)
 RUN pacman -S --noconfirm --needed \
-    base-devel glib2 git openssh sudo ca-certificates curl wget gnupg \
+    base-devel glib2 git openssh sudo ca-certificates curl wget gnupg inetutils \
     nodejs npm \
     zsh tmux btop \
     nano vim \
