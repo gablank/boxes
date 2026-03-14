@@ -266,14 +266,14 @@ cmd_build() {
     local box="$1"
     local podman_cmd="podman"
     is_rootful "$box" && podman_cmd="sudo podman"
-    local base_image="$REGISTRY/$OWNER/box-base:latest"
-    local box_image="$REGISTRY/$OWNER/box-$box:latest"
     local date_tag
     date_tag="$(date -u '+%Y-%m-%dT%H%M')"
 
     local build_sha local_tag
     build_sha="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || printf 'local')"
     local_tag="local-${date_tag}"
+    local base_image="$REGISTRY/$OWNER/box-base:$local_tag"
+    local box_image="$REGISTRY/$OWNER/box-$box:$local_tag"
 
     printf "${CYAN}Building base image...${RESET}\n"
     $podman_cmd build --no-cache \
@@ -290,7 +290,6 @@ cmd_build() {
         --build-arg "BUILD_DATE=$date_tag" \
         --build-arg "BUILD_SHA=$build_sha" \
         -t "$box_image" \
-        -t "$REGISTRY/$OWNER/box-$box:$local_tag" \
         "$REPO_ROOT"
 
     set_image_tag "$box" "$local_tag"
