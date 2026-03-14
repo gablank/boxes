@@ -489,12 +489,12 @@ _box_completion() {
     commands="$(box --list-boxes 2>/dev/null | tr '\n' ' ')"
 
     if [[ $cword -eq 1 ]]; then
-        COMPREPLY=( $(compgen -W "init list enter set-image build assemble assemble-all pull stop status logs images completions help" -- "$cur") )
+        COMPREPLY=( $(compgen -W "init list enter rescue set-image build assemble assemble-all pull stop status logs images completions help" -- "$cur") )
         return 0
     fi
 
     case "${words[1]}" in
-        enter|set-image|build|assemble|pull|stop|status|logs|images)
+        enter|rescue|set-image|build|assemble|pull|stop|status|logs|images)
             if [[ $cword -eq 2 ]]; then
                 COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
             fi
@@ -526,7 +526,7 @@ _box() {
     case $state in
         args)
             case $words[1] in
-                enter|set-image|build|assemble|pull|stop|status|logs|images)
+                enter|rescue|set-image|build|assemble|pull|stop|status|logs|images)
                     _arguments '1: :_box_boxes'
                     ;;
                 completions)
@@ -548,6 +548,7 @@ _box_commands() {
         'assemble:recreate box from box.toml (stops the box)'
         'assemble-all:recreate all boxes (stops all boxes)'
         'pull:pull image from registry, does not restart'
+        'rescue:enter box with minimal init (skips hooks)'
         'stop:stop a box'
         'status:show detailed box info and build metadata'
         'logs:show init log'
