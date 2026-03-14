@@ -6,8 +6,8 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
 REGISTRY="ghcr.io"
 
-_BOX_COMMANDS=(init list enter set-image build assemble assemble-all pull stop status logs images completions help)
-_BOX_COMMANDS_WITH_BOX=(enter set-image build assemble pull stop status logs images)
+_BOX_COMMANDS=(init list enter rescue set-image build assemble assemble-all pull stop status logs images completions help)
+_BOX_COMMANDS_WITH_BOX=(enter rescue set-image build assemble pull stop status logs images)
 
 _detect_owner() {
     local remote
@@ -54,6 +54,7 @@ ${BOLD}COMMANDS${RESET}
     init        [owner]      Set image registry owner in all box.toml files (default: git remote)
     list                     List all boxes with status and image tag
     enter       <box>        Enter a box
+    rescue      <box>        Reassemble without init hooks and enter. ${RED}Stops the box.${RESET}
     set-image   <box> [tag]  Set the image tag in box.toml (default: latest)
     build       <box>        Build container image locally (base + box). Does not restart.
     assemble    [-v] <box>   Recreate box from box.toml. ${RED}Stops the box.${RESET} -v shows container logs.
@@ -210,6 +211,24 @@ cmd_enter() {
     exec distrobox enter $rflag "$name"
 }
 
+cmd_rescue() {
+    validate_box "$1"
+    local box="$1"
+    compile_toml "$box"
+    local name ini_file safe_ini
+    name="$(get_box_name "$box")"
+    ini_file="$REPO_ROOT/$box/distrobox.ini"
+    safe_ini="$(mktemp)"
+    trap 'rm -f "$safe_ini"' RETURN
+    grep -v '^init_hooks=\|^pre_init_hooks=' "$ini_file" > "$safe_ini"
+    printf "${YELLOW}Rescue mode — assembling without init hooks${RESET}\n"
+    ensure_host_dirs "$ini_file"
+    distrobox assemble create --file "$safe_ini"
+    local rflag
+    rflag="$(root_flag "$box")"
+    exec distrobox enter $rflag "$name"
+}
+
 cmd_set_image() {
     validate_box "$1"
     local box="$1" tag="${2:-latest}"
@@ -245,6 +264,8 @@ ensure_host_dirs() {
 cmd_build() {
     validate_box "$1"
     local box="$1"
+    local podman_cmd="podman"
+    is_rootful "$box" && podman_cmd="sudo podman"
     local base_image="$REGISTRY/$OWNER/box-base:latest"
     local box_image="$REGISTRY/$OWNER/box-$box:latest"
     local date_tag
@@ -255,7 +276,7 @@ cmd_build() {
     local_tag="local-${date_tag}"
 
     printf "${CYAN}Building base image...${RESET}\n"
-    podman build --no-cache \
+    $podman_cmd build --no-cache \
         -f "$REPO_ROOT/Containerfile.base" \
         --build-arg "BUILD_DATE=$date_tag" \
         --build-arg "BUILD_SHA=$build_sha" \
@@ -263,7 +284,7 @@ cmd_build() {
         "$REPO_ROOT"
 
     printf "\n${CYAN}Building box-%s image...${RESET}\n" "$box"
-    podman build --no-cache \
+    $podman_cmd build --no-cache \
         -f "$REPO_ROOT/$box/Containerfile" \
         --build-arg "BASE_IMAGE=$base_image" \
         --build-arg "BUILD_DATE=$date_tag" \
@@ -272,6 +293,7 @@ cmd_build() {
         -t "$REGISTRY/$OWNER/box-$box:$local_tag" \
         "$REPO_ROOT"
 
+    set_image_tag "$box" "$local_tag"
     printf "\n${GREEN}Built %s (%s)${RESET}\n" "$box_image" "$local_tag"
     printf "Image built. The running box is ${BOLD}not affected${RESET}.\n"
     printf "Run ${BOLD}box assemble %s${RESET} to recreate the container from this image (${RED}stops the box${RESET}).\n" "$box"
@@ -362,8 +384,14 @@ cmd_status() {
 cmd_logs() {
     validate_box "$1"
     local box="$1"; shift
-    local name podman_cmd="podman"
+    local name rflag status podman_cmd="podman"
     name="$(get_box_name "$box")"
+    rflag="$(root_flag "$box")"
+    status="$(container_status "$name" "$rflag")"
+    if [[ "$status" == "not created" ]]; then
+        printf "${YELLOW}No container — nothing to show${RESET}\n"
+        return
+    fi
     is_rootful "$box" && podman_cmd="sudo podman"
     $podman_cmd logs "$@" "$name"
 }
@@ -431,6 +459,7 @@ cmd_images() {
         local local_date="${tag#local-}"
         local notes="${CYAN}local${RESET}"
         [[ -n "$current_build_date" && "$local_date" == "$current_build_date" ]] && notes+="  ${GREEN}← current${RESET}"
+        [[ "$tag" == "$next_tag" ]] && notes+="  ${YELLOW}← next${RESET}"
         printf "%-24s %-12s %b\n" "$tag" "$(time_ago "$local_date")" "$notes"
     done <<< "$local_tags"
 
@@ -613,6 +642,10 @@ case "$command" in
     enter)
         [[ $# -ge 1 ]] || { printf "${RED}Usage: box enter <box>${RESET}\n" >&2; exit 1; }
         cmd_enter "$1"
+        ;;
+    rescue)
+        [[ $# -ge 1 ]] || { printf "${RED}Usage: box rescue <box>${RESET}\n" >&2; exit 1; }
+        cmd_rescue "$1"
         ;;
     set-image)
         [[ $# -ge 1 ]] || { printf "${RED}Usage: box set-image <box> [tag]${RESET}\n" >&2; exit 1; }

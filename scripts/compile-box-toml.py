@@ -31,6 +31,14 @@ def compile_toml(box_dir: pathlib.Path) -> str:
     mount_files = cfg.get("mount-file", [])
 
     name = distrobox.get("name", box_dir.name)
+
+    # Local images (tag starts with "local-") exist only on the host —
+    # override pull to false so distrobox doesn't try to fetch from the registry.
+    image = distrobox.get("image", "")
+    tag = image.rsplit(":", 1)[-1] if ":" in image else ""
+    if tag.startswith("local-"):
+        distrobox["pull"] = False
+
     additional_flags = distrobox.pop("additional_flags", "")
 
     # Append mount-file entries to additional_flags as --volume
