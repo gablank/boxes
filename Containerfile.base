@@ -140,9 +140,10 @@ RUN mkdir -p /etc/systemd/system/tailscaled.service.d && \
 # which is required for xdg-desktop-portal (screen sharing) and keyring access.
 RUN systemctl --global mask dbus-daemon.service dbus-broker.service
 
+COPY scripts/init-root.sh /usr/local/share/box-init/init-root.sh
 COPY scripts/init-user.sh /usr/local/share/box-init/init-user.sh
 COPY scripts/shell-init.sh /usr/local/share/box-init/shell-init.sh
-RUN chmod +x /usr/local/share/box-init/init-user.sh /usr/local/share/box-init/shell-init.sh
+RUN chmod +x /usr/local/share/box-init/init-root.sh /usr/local/share/box-init/init-user.sh /usr/local/share/box-init/shell-init.sh
 
 COPY local-bin/ /usr/local/bin/
 RUN chmod +x /usr/local/bin/* 2>/dev/null || true
