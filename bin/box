@@ -108,9 +108,33 @@ is_rootful() {
     grep -q '^root=true' "$REPO_ROOT/$box/distrobox.ini"
 }
 
+is_initful() {
+    local box="$1"
+    ensure_compiled "$box"
+    grep -q '^init=true' "$REPO_ROOT/$box/distrobox.ini"
+}
+
 root_flag() {
     local box="$1"
     is_rootful "$box" && printf '%s' "--root" || true
+}
+
+# Read a value from the config baked into the running container.
+# Falls back to empty string if the container isn't running or has no config.
+_get_assembled_value() {
+    local name="$1" box="$2" key="$3"
+    local podman_cmd="podman"
+    is_rootful "$box" && podman_cmd="sudo podman"
+    $podman_cmd exec "$name" grep "^${key}=" /etc/box-assembled.ini 2>/dev/null \
+        | head -1 | cut -d= -f2 || true
+}
+
+_copy_config_to_container() {
+    local box="$1" ini_file="$2"
+    local name podman_cmd="podman"
+    name="$(get_box_name "$box")"
+    is_rootful "$box" && podman_cmd="sudo podman"
+    $podman_cmd cp "$ini_file" "${name}:/etc/box-assembled.ini" 2>/dev/null || true
 }
 
 get_image_line() {
@@ -188,18 +212,25 @@ cmd_init() {
 }
 
 cmd_list() {
-    printf "${BOLD}%-10s %-12s %-14s %s${RESET}\n" "BOX" "NAME" "STATUS" "IMAGE TAG"
-    local box name tag status color
+    printf "${BOLD}%-10s %-12s %-14s %-10s %-10s %-26s %s${RESET}\n" "BOX" "NAME" "STATUS" "ROOT" "INIT" "CURRENT" "NEXT"
+    local box name next_tag current_tag status color root_label init_label assembled_root assembled_init
     for box in $(discover_boxes); do
         name="$(get_box_name "$box")"
-        tag="$(get_image_tag "$box")"
+        next_tag="$(get_image_tag "$box")"
+        current_tag="$(get_running_image_tag "$name" "$box")"
         status="$(container_status "$name" "$(root_flag "$box")")"
         case "$status" in
             running)     color="$GREEN" ;;
             stopped)     color="$YELLOW" ;;
             *)           color="$RED" ;;
         esac
-        printf "%-10s %-12s ${color}%-14s${RESET} %s\n" "$box" "$name" "$status" "$tag"
+        assembled_root="$(_get_assembled_value "$name" "$box" "root")"
+        assembled_init="$(_get_assembled_value "$name" "$box" "init")"
+        root_label="${assembled_root:-$( is_rootful "$box" && echo true || echo false )}"
+        init_label="${assembled_init:-$( is_initful "$box" && echo true || echo false )}"
+        [[ "$root_label" == "true" ]] && root_label="yes" || root_label="no"
+        [[ "$init_label" == "true" ]] && init_label="yes" || init_label="no"
+        printf "%-10s %-12s ${color}%-14s${RESET} %-10s %-10s %-26s %s\n" "$box" "$name" "$status" "$root_label" "$init_label" "${current_tag:--}" "$next_tag"
     done
 }
 
@@ -224,6 +255,7 @@ cmd_rescue() {
     printf "${YELLOW}Rescue mode — assembling without init hooks${RESET}\n"
     ensure_host_dirs "$ini_file"
     distrobox assemble create --file "$safe_ini"
+    _copy_config_to_container "$box" "$safe_ini"
     local rflag
     rflag="$(root_flag "$box")"
     exec distrobox enter $rflag "$name"
@@ -321,6 +353,7 @@ cmd_assemble() {
         fi
         return "$rc"
     fi
+    _copy_config_to_container "$box" "$REPO_ROOT/$box/distrobox.ini"
     printf "${GREEN}Done.${RESET}\n"
 }
 
@@ -356,20 +389,29 @@ cmd_stop() {
 
 cmd_status() {
     validate_box "$1"
-    local box="$1" name tag status image rflag
+    local box="$1" name next_tag current_tag status rflag
     name="$(get_box_name "$box")"
-    tag="$(get_image_tag "$box")"
-    image="$(get_image_line "$box")"
+    next_tag="$(get_image_tag "$box")"
+    current_tag="$(get_running_image_tag "$name" "$box")"
     rflag="$(root_flag "$box")"
     status="$(container_status "$name" "$rflag")"
 
-    printf "${BOLD}Box:${RESET}     %s\n" "$box"
-    printf "${BOLD}Name:${RESET}    %s\n" "$name"
-    printf "${BOLD}Status:${RESET}  %s\n" "$status"
-    printf "${BOLD}Image:${RESET}   %s\n" "$image"
-    printf "${BOLD}Tag:${RESET}     %s\n" "$tag"
-    if [[ "$tag" != "latest" ]]; then
-        printf "${YELLOW}         (pinned)${RESET}\n"
+    local assembled_root assembled_init
+    assembled_root="$(_get_assembled_value "$name" "$box" "root")"
+    assembled_init="$(_get_assembled_value "$name" "$box" "init")"
+    local root_label init_label
+    root_label="${assembled_root:-$( is_rootful "$box" && echo true || echo false )}"
+    init_label="${assembled_init:-$( is_initful "$box" && echo true || echo false )}"
+
+    printf "${BOLD}Box:${RESET}      %s\n" "$box"
+    printf "${BOLD}Name:${RESET}     %s\n" "$name"
+    printf "${BOLD}Status:${RESET}   %s\n" "$status"
+    printf "${BOLD}Root:${RESET}     %s\n" "$root_label"
+    printf "${BOLD}Init:${RESET}     %s\n" "$init_label"
+    printf "${BOLD}Current:${RESET}  %s\n" "${current_tag:--}"
+    printf "${BOLD}Next:${RESET}     %s\n" "$next_tag"
+    if [[ "$next_tag" != "latest" ]]; then
+        printf "${YELLOW}          (pinned)${RESET}\n"
     fi
     echo ""
 
@@ -398,6 +440,13 @@ cmd_logs() {
 
 get_running_image_tag() {
     local name="$1" box="$2"
+    local assembled_image
+    assembled_image="$(_get_assembled_value "$name" "$box" "image")"
+    if [[ -n "$assembled_image" ]]; then
+        printf '%s' "${assembled_image##*:}"
+        return
+    fi
+    # Fallback: read from podman inspect (containers assembled before config copy)
     local podman_cmd="podman"
     is_rootful "$box" && podman_cmd="sudo podman"
     $podman_cmd inspect "$name" --format '{{.ImageName}}' 2>/dev/null \
