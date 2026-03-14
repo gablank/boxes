@@ -20,6 +20,7 @@ RUN pacman-key --init && \
 #   Claude Code sandbox: bubblewrap (process isolation), socat (socket proxy),
 #     libseccomp (BPF seccomp filters)
 #   VPN: tailscale (client for per-box tailnets)
+#   KDE integration: breeze-gtk (Breeze theme for GTK apps like Chrome), xdg-desktop-portal-kde (KDE notifications + file dialogs)
 RUN pacman -S --noconfirm --needed \
     base-devel glib2 git openssh sudo ca-certificates curl wget gnupg inetutils \
     nodejs npm \
@@ -31,7 +32,8 @@ RUN pacman -S --noconfirm --needed \
     pipewire libpipewire pipewire-alsa pipewire-pulse \
     github-cli git-absorb diff-so-fancy \
     bubblewrap socat libseccomp \
-    tailscale
+    tailscale \
+    breeze-gtk xdg-desktop-portal-kde
 
 # Switch iptables/ip6tables to nftables backend (host kernel lacks ip_tables module)
 RUN ln -sf /usr/bin/xtables-nft-multi /usr/bin/iptables && \
