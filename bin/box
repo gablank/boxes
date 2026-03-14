@@ -396,18 +396,18 @@ cmd_logs() {
     $podman_cmd logs "$@" "$name"
 }
 
-get_running_build_date() {
+get_running_image_tag() {
     local name="$1" box="$2"
     local podman_cmd="podman"
     is_rootful "$box" && podman_cmd="sudo podman"
-    $podman_cmd exec "$name" cat /etc/box-build-info 2>/dev/null \
-        | grep '^build_date=' | cut -d= -f2 || true
+    $podman_cmd inspect "$name" --format '{{.ImageName}}' 2>/dev/null \
+        | grep -oP ':\K[^:]+$' || true
 }
 
 _image_markers() {
-    local tag="$1" current_build_date="$2" next_tag="$3"
+    local tag="$1" current_tag="$2" next_tag="$3"
     local marks=""
-    [[ -n "$current_build_date" && "$tag" == "$current_build_date" ]] && marks+="${GREEN}← current${RESET}  "
+    [[ -n "$current_tag" && "$tag" == "$current_tag" ]] && marks+="${GREEN}← current${RESET}  "
     [[ "$tag" == "$next_tag" ]] && marks+="${YELLOW}← next${RESET}"
     printf '%s' "$marks"
 }
@@ -416,9 +416,9 @@ cmd_images() {
     validate_box "$1"
     local box="$1"
     local repo="$OWNER/box-$box"
-    local ini_tag current_build_date
+    local ini_tag current_tag
     ini_tag="$(get_image_tag "$box")"
-    current_build_date="$(get_running_build_date "$(get_box_name "$box")" "$box")"
+    current_tag="$(get_running_image_tag "$(get_box_name "$box")" "$box")"
 
     local token
     token="$(curl -sf \
@@ -459,7 +459,7 @@ cmd_images() {
         [[ -z "$tag" ]] && continue
         local local_date="${tag#local-}"
         local notes="${CYAN}local${RESET}"
-        [[ -n "$current_build_date" && "$local_date" == "$current_build_date" ]] && notes+="  ${GREEN}← current${RESET}"
+        [[ -n "$current_tag" && "$tag" == "$current_tag" ]] && notes+="  ${GREEN}← current${RESET}"
         [[ "$tag" == "$next_tag" ]] && notes+="  ${YELLOW}← next${RESET}"
         printf "%-24s %-12s %b\n" "$tag" "$(time_ago "$local_date")" "$notes"
     done <<< "$local_tags"
@@ -469,7 +469,7 @@ cmd_images() {
         [[ -z "$tag" ]] && continue
         local display_tag="$tag"
         [[ -n "$has_latest" && "$tag" == "$latest_date" ]] && display_tag="$tag (latest)"
-        printf "%-24s %-12s %b\n" "$display_tag" "$(time_ago "$tag")" "$(_image_markers "$tag" "$current_build_date" "$next_tag")"
+        printf "%-24s %-12s %b\n" "$display_tag" "$(time_ago "$tag")" "$(_image_markers "$tag" "$current_tag" "$next_tag")"
     done <<< "$date_tags"
 }
 
