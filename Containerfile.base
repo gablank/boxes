@@ -62,7 +62,7 @@ RUN git clone https://aur.archlinux.org/yay.git . && \
 # AUR packages, grouped by purpose:
 #   IDEs / editors: visual-studio-code-bin, cursor-bin
 #   Zsh framework: oh-my-zsh-git
-#   Browser (exported from workbox via distrobox): google-chrome
+#   Browser (exported via distrobox): google-chrome (desktop file patched later by chrome-wrapper)
 #   Database CLI tools (mongodump, mongorestore, etc.): mongodb-tools
 #   GCP CLI + GKE auth plugin for kubectl: google-cloud-cli, gke-gcloud-auth-plugin
 #   AI coding assistant (Node.js CLI): claude-code
@@ -126,6 +126,17 @@ RUN chmod u+s /usr/bin/newuidmap /usr/bin/newgidmap
 # Container-local xdg-open so links open in the container browser
 RUN printf '#!/bin/sh\nexec gio open "$@"\n' > /usr/local/bin/xdg-open && \
     chmod +x /usr/local/bin/xdg-open
+
+# Chrome wrapper: desktop-launched apps (distrobox-export) bypass shell init
+# and PAM, so DBUS_SESSION_BUS_ADDRESS from /etc/environment is never set.
+# This wrapper sources /etc/environment before exec'ing Chrome so screen
+# sharing and notifications work via the host's xdg-desktop-portal.
+# Depends on: google-chrome AUR package (installed above)
+RUN printf '#!/bin/bash\nif [[ -f /etc/environment ]]; then\n    set -a; source /etc/environment; set +a\nfi\nexec /usr/bin/google-chrome-stable "$@"\n' \
+        > /usr/local/bin/chrome-wrapper && \
+    chmod +x /usr/local/bin/chrome-wrapper && \
+    sed -i 's|/usr/bin/google-chrome-stable|/usr/local/bin/chrome-wrapper|g' \
+        /usr/share/applications/google-chrome.desktop
 
 RUN printf 'export ZSH=/usr/share/oh-my-zsh\nZSH_THEME="robbyrussell"\nplugins=(git)\nsource "$ZSH/oh-my-zsh.sh"\n' \
         > /etc/skel/.zshrc
