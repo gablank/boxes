@@ -39,6 +39,7 @@ def compile_toml(box_dir: pathlib.Path) -> str:
     if tag.startswith("local-"):
         distrobox["pull"] = False
 
+    timezone = distrobox.pop("timezone", "")
     additional_flags = distrobox.pop("additional_flags", "")
 
     # Append mount-file entries to additional_flags as --volume
@@ -64,6 +65,10 @@ def compile_toml(box_dir: pathlib.Path) -> str:
 
     if additional_flags:
         lines.append(f"additional_flags={additional_flags}")
+
+    # Box metadata — not consumed by distrobox, read by init-root.sh
+    if timezone:
+        lines.append(f"# box-meta:timezone={timezone}")
 
     return "\n".join(lines) + "\n"
 

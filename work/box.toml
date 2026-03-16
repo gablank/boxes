@@ -6,6 +6,7 @@ replace = true
 pull = true
 start_now = true
 init = true
+timezone = "Europe/Oslo"
 root = true
 unshare_netns = true
 exported_apps = "google-chrome-stable"
