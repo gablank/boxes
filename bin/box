@@ -490,9 +490,10 @@ cmd_images() {
     has_latest=""
     printf '%s' "$tags_json" | grep -q '"latest"' && has_latest=1
 
-    # Resolve "latest" ini tag to the concrete date tag it points to
+    # Resolve "latest" tags to the concrete date tag they point to
     next_tag="$ini_tag"
     [[ "$ini_tag" == "latest" && -n "$has_latest" && -n "$latest_date" ]] && next_tag="$latest_date"
+    [[ "$current_tag" == "latest" && -n "$has_latest" && -n "$latest_date" ]] && current_tag="$latest_date"
 
     # Collect local-only tags from podman images
     local local_tags podman_cmd="podman"
@@ -500,26 +501,34 @@ cmd_images() {
     local_tags="$($podman_cmd images --format '{{.Tag}}' "$REGISTRY/$repo" 2>/dev/null \
         | grep '^local-' | sort -r || true)"
 
+    # Merge local and registry tags, sort by date portion descending
+    local all_tags=""
+    while IFS= read -r tag; do
+        [[ -z "$tag" ]] && continue
+        all_tags+="${tag#local-} $tag"$'\n'
+    done <<< "$local_tags"
+    while IFS= read -r tag; do
+        [[ -z "$tag" ]] && continue
+        all_tags+="$tag $tag"$'\n'
+    done <<< "$date_tags"
+    all_tags="$(printf '%s' "$all_tags" | sort -t' ' -k1,1r)"
+
     printf "${BOLD}Available versions for box-%s:${RESET}\n\n" "$box"
     printf "${BOLD}%-24s %-12s %s${RESET}\n" "TAG" "AGE" "NOTES"
 
-    # Show local builds first
-    while IFS= read -r tag; do
+    while IFS=' ' read -r sort_key tag; do
         [[ -z "$tag" ]] && continue
-        local local_date="${tag#local-}"
-        local notes="${CYAN}local${RESET}"
-        [[ -n "$current_tag" && "$tag" == "$current_tag" ]] && notes+="  ${GREEN}← current${RESET}"
-        [[ "$tag" == "$next_tag" ]] && notes+="  ${YELLOW}← next${RESET}"
-        printf "%-24s %-12s %b\n" "$tag" "$(time_ago "$local_date")" "$notes"
-    done <<< "$local_tags"
-
-    # Show registry tags
-    while IFS= read -r tag; do
-        [[ -z "$tag" ]] && continue
-        local display_tag="$tag"
-        [[ -n "$has_latest" && "$tag" == "$latest_date" ]] && display_tag="$tag (latest)"
-        printf "%-24s %-12s %b\n" "$display_tag" "$(time_ago "$tag")" "$(_image_markers "$tag" "$current_tag" "$next_tag")"
-    done <<< "$date_tags"
+        if [[ "$tag" == local-* ]]; then
+            local notes="${CYAN}local${RESET}"
+            [[ -n "$current_tag" && "$tag" == "$current_tag" ]] && notes+="  ${GREEN}← current${RESET}"
+            [[ "$tag" == "$next_tag" ]] && notes+="  ${YELLOW}← next${RESET}"
+            printf "%-24s %-12s %b\n" "$tag" "$(time_ago "$sort_key")" "$notes"
+        else
+            local display_tag="$tag"
+            [[ -n "$has_latest" && "$tag" == "$latest_date" ]] && display_tag="$tag (latest)"
+            printf "%-24s %-12s %b\n" "$display_tag" "$(time_ago "$tag")" "$(_image_markers "$tag" "$current_tag" "$next_tag")"
+        fi
+    done <<< "$all_tags"
 }
 
 _completions_bash() {
