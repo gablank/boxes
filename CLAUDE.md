@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Distrobox container environments (Arch Linux) built via GitHub Actions and managed locally with the `box` CLI. Designed to be forked — CI auto-publishes images to the fork owner's GHCR.
 
-Two boxes exist: `priv` (personal dev) and `work` (adds kubectl, k9s, qemu, glab).
+Three boxes exist: `priv` (personal dev), `work` (adds kubectl, k9s, qemu, glab), and `dev` (minimal box for developing the box system itself — no init, no root).
 
 ## Architecture
 
@@ -68,7 +68,7 @@ grep -oP '^\s+\K[a-z-]+(?=\))' bin/box  # extract case arms
 
 ## Maintenance Contracts
 
-When adding a new box, you must update: the box's `Containerfile`, `box.toml`, CI path filters in `build.yml` (both the `changes` filter and the `box_matrix` generation), and the README boxes table.
+When adding or removing a box, follow the checklist in `.agents/skills/adding-a-box/SKILL.md` — it lists every file that must be created or updated.
 
 When adding a new `bin/box` command: add to `_BOX_COMMANDS` array, add case dispatch, and verify completions stay in sync (CI enforces this).
 

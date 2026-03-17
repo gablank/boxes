@@ -47,6 +47,9 @@ work/
   Containerfile             Thin layer on base for workbox (adds kubectl, k9s, qemu, glab)
   distrobox.ini             Container definition (managed by bin/box)
   local-bin/                Scripts/binaries installed only into workbox
+dev/
+  Containerfile             Thin layer on base for devbox (no init, no root — for developing box itself)
+  distrobox.ini             Container definition (managed by bin/box)
 local-bin/                  Scripts/binaries installed into ALL boxes
 scripts/
   init-user.sh              Lightweight runtime init (ssh, zshrc, env vars, chsh)
@@ -61,7 +64,7 @@ setup.sh                    One-shot setup script for new users / forks
 
 1. A `changes` job detects which paths changed and computes the `date_tag`; on `schedule`/`workflow_dispatch` all flags are forced true
 2. `build-base` runs only if `Containerfile.base`, `scripts/`, or `local-bin/` changed
-3. `build-priv` and `build-work` each run only if base changed OR their own directory changed; they run in parallel after `build-base`
+3. `build-priv`, `build-work`, and `build-dev` each run only if base changed OR their own directory changed; they run in parallel after `build-base`
 4. All images are tagged `latest` + `YYYY-MM-DDTHHMM` (e.g. `2026-03-04T0300`, UTC) and pushed to ghcr.io
 5. Locally, `box rebuild <name>` pulls the latest image and recreates the container
 
@@ -70,7 +73,7 @@ setup.sh                    One-shot setup script for new users / forks
 ## Containerfile Conventions
 
 - `Containerfile.base` installs everything shared: pacman packages, yay, AUR packages, Cursor extensions, system fixes, `scripts/init-user.sh`, and `local-bin/`
-- Box-specific Containerfiles (`priv/Containerfile`, `work/Containerfile`) declare `ARG BASE_IMAGE=ghcr.io/gablank/box-base:latest` followed by `FROM ${BASE_IMAGE}`. CI overrides `BASE_IMAGE` to point to the fork owner's registry.
+- Box-specific Containerfiles (`priv/Containerfile`, `work/Containerfile`, `dev/Containerfile`) declare `ARG BASE_IMAGE=ghcr.io/gablank/box-base:latest` followed by `FROM ${BASE_IMAGE}`. CI overrides `BASE_IMAGE` to point to the fork owner's registry.
 - Build context is always the repo root
 - Both base and box Containerfiles accept `BUILD_DATE` and `BUILD_SHA` build args, written to `/etc/box-build-info`
 - Always clean caches at the end of a Containerfile (`pacman -Scc --noconfirm`, `rm -rf /var/cache/pacman/pkg/*`)
@@ -144,14 +147,9 @@ When adding a new command:
 - **Docker-compose + work tailnet**: to make compose services reachable from the work box *and* on the work tailnet, add `network_mode: "container:workbox"` to each service in the compose file. Services then share workbox's network namespace; use `localhost:PORT` to reach them from the box.
 - See `.agents/skills/distrobox-ini-conventions/SKILL.md` for the full template and command reference
 
-## Adding a New Box
+## Adding or Removing a Box
 
-1. Create `<name>/Containerfile` (FROM box-base, add specific packages, COPY `<name>/local-bin/`)
-2. Create `<name>/distrobox.ini` (follow existing pattern)
-3. Create `<name>/local-bin/.gitkeep`
-4. Add `box-<name>` to the cleanup image list in `.github/workflows/build.yml`
-5. In the `changes` job in `.github/workflows/build.yml`: add a `<name>:` paths-filter entry for `<name>/**`, wire the filter output into the `Compute build flags` step so it appends to the `boxes` array. The dynamic matrix (`fromJson`) handles the rest.
-6. `bin/box` auto-discovers it -- no changes needed there
+Follow the complete checklist in `.agents/skills/adding-a-box/SKILL.md`. It covers creating the box directory, updating CI, and updating all documentation files.
 
 **CI path filter maintenance:** The `changes` job in `.github/workflows/build.yml` uses `dorny/paths-filter` to detect changes and builds a dynamic `box_matrix` JSON array consumed by `build-boxes` via `fromJson`. It must be kept in sync with the repo layout:
 - New box → add a filter entry for `<name>/**` and wire it into the `boxes` array in the `Compute build flags` step
