@@ -469,29 +469,25 @@ cmd_images() {
     ini_tag="$(get_image_tag "$box")"
     current_tag="$(get_running_image_tag "$(get_box_name "$box")" "$box")"
 
-    local token
-    token="$(curl -sf \
+    local token date_tags="" latest_date="" has_latest=""
+    token="$(curl -sf --max-time 5 \
         "https://$REGISTRY/token?scope=repository:${repo}:pull&service=ghcr.io" \
-        | grep -o '"token":"[^"]*"' | cut -d'"' -f4)"
-    if [[ -z "$token" ]]; then
-        printf "${RED}Error: could not get registry token for %s${RESET}\n" "$repo" >&2
-        exit 1
+        | grep -o '"token":"[^"]*"' | cut -d'"' -f4 || true)"
+    if [[ -n "$token" ]]; then
+        local tags_json
+        tags_json="$(curl -sf --max-time 5 \
+            -H "Authorization: Bearer $token" \
+            "https://$REGISTRY/v2/${repo}/tags/list" || true)"
+        if [[ -n "$tags_json" ]]; then
+            date_tags="$(printf '%s' "$tags_json" \
+                | grep -o '"[0-9][^"]*"' | tr -d '"' | sort -r)"
+            latest_date="$(printf '%s' "$date_tags" | head -1)"
+            printf '%s' "$tags_json" | grep -q '"latest"' && has_latest=1
+        fi
     fi
 
-    local tags_json
-    tags_json="$(curl -sf \
-        -H "Authorization: Bearer $token" \
-        "https://$REGISTRY/v2/${repo}/tags/list")"
-
-    local date_tags latest_date has_latest next_tag
-    date_tags="$(printf '%s' "$tags_json" \
-        | grep -o '"[0-9][^"]*"' | tr -d '"' | sort -r)"
-    latest_date="$(printf '%s' "$date_tags" | head -1)"
-    has_latest=""
-    printf '%s' "$tags_json" | grep -q '"latest"' && has_latest=1
-
     # Resolve "latest" tags to the concrete date tag they point to
-    next_tag="$ini_tag"
+    local next_tag="$ini_tag"
     [[ "$ini_tag" == "latest" && -n "$has_latest" && -n "$latest_date" ]] && next_tag="$latest_date"
     [[ "$current_tag" == "latest" && -n "$has_latest" && -n "$latest_date" ]] && current_tag="$latest_date"
 
