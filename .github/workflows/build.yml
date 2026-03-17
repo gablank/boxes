@@ -104,6 +104,8 @@ jobs:
               - 'priv/**'
             work:
               - 'work/**'
+            dev:
+              - 'dev/**'
 
       - name: Compute build flags
         id: result
@@ -112,12 +114,14 @@ jobs:
           base="${{ steps.filter.outputs.base }}"
           priv="${{ steps.filter.outputs.priv }}"
           work="${{ steps.filter.outputs.work }}"
+          dev="${{ steps.filter.outputs.dev }}"
 
-          [[ "$force" == "true" ]] && base=true && priv=true && work=true
+          [[ "$force" == "true" ]] && base=true && priv=true && work=true && dev=true
 
           boxes=()
           [[ "$base" == "true" || "$priv" == "true" ]] && boxes+=('"priv"')
           [[ "$base" == "true" || "$work" == "true" ]] && boxes+=('"work"')
+          [[ "$base" == "true" || "$dev" == "true" ]] && boxes+=('"dev"')
 
           echo "build_base=$base" >> "$GITHUB_OUTPUT"
           echo "box_matrix=[$(IFS=,; echo "${boxes[*]}")]" >> "$GITHUB_OUTPUT"
@@ -202,7 +206,7 @@ jobs:
         with:
           script: |
             const owner = context.repo.owner;
-            const images = ['box-base', 'box-priv', 'box-work'];
+            const images = ['box-base', 'box-priv', 'box-work', 'box-dev'];
             const keepDays = 14;
             const cutoff = new Date(Date.now() - keepDays * 86400000);
 

@@ -10,6 +10,7 @@ Each box is an [Arch Linux](https://archlinux.org/) container with a full develo
 |-----|---------|
 | `priv` | Personal development environment |
 | `work` | Work environment (adds kubectl, k9s, qemu, glab) |
+| `dev` | Minimal box for developing the box system itself |
 
 ## Quick Start
 
@@ -141,6 +142,7 @@ Images are built by GitHub Actions on every push to `main` and nightly at 03:00 
 - `ghcr.io/<owner>/box-base` — base image with all shared packages
 - `ghcr.io/<owner>/box-priv` — privbox image
 - `ghcr.io/<owner>/box-work` — workbox image
+- `ghcr.io/<owner>/box-dev` — devbox image
 
 Each image is tagged `latest` and `YYYY-MM-DDTHHMM` (UTC, e.g. `2026-03-04T0300`). Images older than 14 days are automatically deleted (keeping `latest`).
 
@@ -156,6 +158,9 @@ work/
   Containerfile         Thin layer on base for workbox
   box.toml              Container definition (source of truth)
   local-bin/            Scripts installed only into workbox
+dev/
+  Containerfile         Thin layer on base for devbox (no init, no root)
+  box.toml              Container definition (source of truth)
 local-bin/              Scripts installed into ALL boxes
 scripts/
   init-user.sh          Runtime user init (runs once on first container start)

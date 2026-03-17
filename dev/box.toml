@@ -1,0 +1,10 @@
+[distrobox]
+name = "devbox"
+image = "ghcr.io/gablank/box-dev:latest"
+home = "${HOME}/distrobox/devbox/home"
+replace = true
+pull = true
+start_now = true
+timezone = "Europe/Oslo"
+pre_init_hooks = "export SHELL=/usr/bin/zsh"
+additional_flags = "--security-opt seccomp=unconfined"

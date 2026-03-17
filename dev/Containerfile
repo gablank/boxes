@@ -1,0 +1,8 @@
+ARG BASE_IMAGE=ghcr.io/gablank/box-base:latest
+FROM ${BASE_IMAGE}
+
+ARG BUILD_DATE=unknown
+ARG BUILD_SHA=unknown
+
+RUN printf 'build_date=%s\nbuild_sha=%s\nimage=box-dev\n' \
+        "$BUILD_DATE" "$BUILD_SHA" > /etc/box-build-info

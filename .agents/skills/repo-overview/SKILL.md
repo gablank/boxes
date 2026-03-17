@@ -10,7 +10,7 @@ This repo defines distrobox container environments built via CI and managed loca
 ## Architecture
 
 - `Containerfile.base` - shared base image (Arch Linux + pacman + yay + AUR packages + Cursor extensions)
-- `priv/Containerfile`, `work/Containerfile` - thin layers adding box-specific packages
+- `priv/Containerfile`, `work/Containerfile`, `dev/Containerfile` - thin layers adding box-specific packages
 - Images are built nightly by GitHub Actions and pushed to `ghcr.io/<repo-owner>/box-*` (derived from `github.repository_owner`, so forks build to their own registry)
 - `distrobox.ini` files point to the pre-built images; `distrobox assemble` just pulls and creates
 - `scripts/init-user.sh` handles lightweight user-home setup at first run
@@ -21,7 +21,7 @@ This repo defines distrobox container environments built via CI and managed loca
 | Path | Purpose |
 |------|---------|
 | `Containerfile.base` | Shared base image definition |
-| `priv/`, `work/` | Per-box Containerfile, distrobox.ini, and local-bin/ |
+| `priv/`, `work/`, `dev/` | Per-box Containerfile, box.toml, and local-bin/ |
 | `local-bin/` | Custom scripts/binaries installed into ALL boxes |
 | `{box}/local-bin/` | Custom scripts/binaries installed into that specific box |
 | `scripts/` | Runtime init scripts baked into the base image |
@@ -31,6 +31,6 @@ This repo defines distrobox container environments built via CI and managed loca
 ## Image flow
 
 1. CI builds `box-base` from `Containerfile.base`
-2. CI builds `box-priv` and `box-work` from their respective Containerfiles (FROM box-base)
+2. CI builds `box-priv`, `box-work`, and `box-dev` from their respective Containerfiles (FROM box-base)
 3. All images are tagged `latest` + `YYYY-MM-DD` and pushed to ghcr.io
 4. Locally, `box rebuild <name>` pulls latest and recreates the container
