@@ -24,7 +24,9 @@ RUN pacman-key --init && \
 RUN pacman -S --noconfirm --needed \
     base-devel glib2 git openssh sudo ca-certificates curl wget gnupg inetutils \
     nodejs npm \
-    zsh tmux btop \
+    man-db man-pages \
+    zsh tmux btop less \
+    jq tree ripgrep fd unzip zip \
     nano vim \
     python uv mise usage \
     terraform \
