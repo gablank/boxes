@@ -440,17 +440,29 @@ cmd_logs() {
 
 get_running_image_tag() {
     local name="$1" box="$2"
+    local tag=""
     local assembled_image
     assembled_image="$(_get_assembled_value "$name" "$box" "image")"
     if [[ -n "$assembled_image" ]]; then
-        printf '%s' "${assembled_image##*:}"
-        return
+        tag="${assembled_image##*:}"
+    else
+        # Fallback: read from podman inspect (containers assembled before config copy)
+        local podman_cmd="podman"
+        is_rootful "$box" && podman_cmd="sudo podman"
+        tag="$($podman_cmd inspect "$name" --format '{{.ImageName}}' 2>/dev/null \
+            | grep -oP ':\K[^:]+$' || true)"
     fi
-    # Fallback: read from podman inspect (containers assembled before config copy)
-    local podman_cmd="podman"
-    is_rootful "$box" && podman_cmd="sudo podman"
-    $podman_cmd inspect "$name" --format '{{.ImageName}}' 2>/dev/null \
-        | grep -oP ':\K[^:]+$' || true
+    # Resolve "latest" to actual build date so we track the real image, not the
+    # moving tag.  Falls back to "latest" if build-info is unavailable.
+    if [[ "$tag" == "latest" ]]; then
+        local podman_cmd="podman"
+        is_rootful "$box" && podman_cmd="sudo podman"
+        local build_date
+        build_date="$($podman_cmd exec "$name" \
+            grep -oP 'build_date=\K.*' /etc/box-build-info 2>/dev/null || true)"
+        [[ -n "$build_date" ]] && tag="$build_date"
+    fi
+    printf '%s' "$tag"
 }
 
 _image_markers() {
