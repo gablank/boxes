@@ -35,7 +35,8 @@ RUN pacman -S --noconfirm --needed \
     github-cli git-absorb diff-so-fancy \
     bubblewrap socat libseccomp \
     tailscale \
-    breeze-gtk xdg-desktop-portal-kde
+    breeze-gtk xdg-desktop-portal-kde && \
+    mandb
 
 # Switch iptables/ip6tables to nftables backend (host kernel lacks ip_tables module)
 RUN ln -sf /usr/bin/xtables-nft-multi /usr/bin/iptables && \
