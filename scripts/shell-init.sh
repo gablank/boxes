@@ -8,7 +8,7 @@
 # --- Environment ---
 export DOCKER_HOST="unix:///podman.sock"
 
-[[ "$(pwd)" == "/run/host/home/awenhaug" ]] && cd ~
+[[ "$(pwd)" == /run/host/* ]] && cd ~
 
 # --- D-Bus ---
 # Use the host's session bus so xdg-desktop-portal works for screen sharing.
