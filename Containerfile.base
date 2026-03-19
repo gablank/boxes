@@ -149,7 +149,8 @@ RUN printf 'export ZSH=/usr/share/oh-my-zsh\nZSH_THEME="robbyrussell"\nplugins=(
 RUN mkdir -p /etc/systemd/system/tailscaled.service.d && \
     printf '[Service]\nExecStart=\nExecStart=/usr/bin/tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/var/run/tailscale/box.sock --port 41641\n' \
         > /etc/systemd/system/tailscaled.service.d/socket-path.conf && \
-    systemctl enable tailscaled.service
+    systemctl enable tailscaled.service && \
+    systemctl enable sshd.service
 
 # Mask the user-session D-Bus so the container's systemd --user never starts its
 # own bus. All apps (terminal and desktop-launched) use the host bus instead,
