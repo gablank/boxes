@@ -12,6 +12,7 @@ printf '[box-init] root init start\n'
 tz="$(grep -oP '^# box-meta:timezone=\K.+' /etc/box-assembled.ini 2>/dev/null || true)"
 if [[ -n "$tz" ]]; then
     if [[ -f "/usr/share/zoneinfo/$tz" ]]; then
+        umount /etc/localtime 2>/dev/null || true
         ln -sf "/usr/share/zoneinfo/$tz" /etc/localtime
         printf '[box-init] timezone set to %s\n' "$tz"
     else
