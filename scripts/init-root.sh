@@ -8,8 +8,8 @@ readonly user="${1:?Usage: init-root.sh <username>}"
 
 printf '[box-init] root init start\n'
 
-# Set timezone from box.toml (compiled into box-assembled.ini as box-meta comment)
-tz="$(grep -oP '^# box-meta:timezone=\K.+' /etc/box-assembled.ini 2>/dev/null || true)"
+# Set timezone — BOX_TIMEZONE is injected via pre_init_hooks by the compiler
+tz="${BOX_TIMEZONE:-}"
 if [[ -n "$tz" ]]; then
     if [[ -f "/usr/share/zoneinfo/$tz" ]]; then
         umount /etc/localtime 2>/dev/null || true
