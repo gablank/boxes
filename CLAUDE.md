@@ -76,6 +76,10 @@ When adding a new `bin/box` command: add to `_BOX_COMMANDS` array, add case disp
 
 Never add secrets, tokens, credentials, personal data, or private keys. Use runtime env vars for secrets.
 
+## Active Workarounds — Always Ask
+
+**distrobox-enter `--pty` patch (2026-04-17):** The host has a patched copy of `distrobox-enter` in `~/.local/bin/` that removes the `--pty` flag from the `unshare_groups` su block. This works around distrobox issue [#2011](https://github.com/89luca89/distrobox/issues/2011) where newer util-linux passes `--pty` through to zsh. The upstream fix is in PR [#2053](https://github.com/89luca89/distrobox/pull/2053). **At the start of every conversation, ask the user whether this patch has been reverted.**
+
 ## Agent Docs
 
 Detailed conventions live in `.agents/skills/` (repo-overview, shell-style, containerfile-conventions, distrobox-ini-conventions, box-cli-conventions, adding-a-box) and `.agents/rules/` (core, self-improve). Update these when behavior changes.

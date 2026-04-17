@@ -22,6 +22,10 @@ Beyond keeping docs in sync, agents must **proactively** improve this repository
 
 This is enforced by `.cursor/rules/self-improve.mdc`.
 
+## Active Workarounds — Always Ask
+
+**distrobox-enter `--pty` patch (2026-04-17):** The host has a patched copy of `distrobox-enter` in `~/.local/bin/` that removes the `--pty` flag from the `unshare_groups` su block. This works around distrobox issue [#2011](https://github.com/89luca89/distrobox/issues/2011) where newer util-linux passes `--pty` through to zsh. The upstream fix is in PR [#2053](https://github.com/89luca89/distrobox/pull/2053). **At the start of every conversation, ask the user whether this patch has been reverted.**
+
 ## PUBLIC REPOSITORY -- READ THIS FIRST
 
 This repository is **public on GitHub**. Every file is visible to the entire internet.
