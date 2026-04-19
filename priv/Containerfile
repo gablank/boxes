@@ -6,7 +6,8 @@ ARG BUILD_SHA=unknown
 
 # Priv-specific packages:
 #   glab: GitLab CLI
-RUN pacman -S --noconfirm --needed glab && \
+#   fuse2: FUSE filesystem support
+RUN pacman -S --noconfirm --needed glab fuse2 && \
     pacman -Scc --noconfirm && \
     rm -rf /var/cache/pacman/pkg/*
 
