@@ -42,12 +42,13 @@ def compile_toml(box_dir: pathlib.Path) -> str:
     timezone = distrobox.pop("timezone", "")
     additional_flags = distrobox.pop("additional_flags", "")
 
-    # Inject timezone into pre_init_hooks so init-root.sh can read it
-    # (init_hooks run before box-assembled.ini is copied into the container)
+    # Inject timezone into init_hooks so init-root.sh can read it
+    # (pre_init_hooks and init_hooks run in separate contexts, so exporting
+    # in pre_init_hooks does not carry over)
     if timezone:
-        pre = distrobox.get("pre_init_hooks", "")
+        init = distrobox.get("init_hooks", "")
         export = f"export BOX_TIMEZONE={timezone}"
-        distrobox["pre_init_hooks"] = f"{pre} && {export}" if pre else export
+        distrobox["init_hooks"] = f"{export} && {init}" if init else export
 
     # Append mount-file entries to additional_flags as --volume
     for mf in mount_files:
