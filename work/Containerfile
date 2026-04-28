@@ -17,6 +17,14 @@ RUN pacman -Syu --noconfirm --needed kubectl k9s qemu-base qemu-img glab \
     pacman -Scc --noconfirm && \
     rm -rf /var/cache/pacman/pkg/*
 
+# Rootless podman inside distrobox: the user's systemd manager has no cgroup
+# delegation, so the default systemd cgroup driver fails creating scope units
+# with "interactive authentication required". Use cgroupfs and log events to
+# a file (journald default also fails without a user journal).
+RUN mkdir -p /etc/containers/containers.conf.d && \
+    printf '[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\n' \
+        > /etc/containers/containers.conf.d/10-box-rootless.conf
+
 COPY work/local-bin/ /usr/local/bin/
 RUN chmod +x /usr/local/bin/* 2>/dev/null || true
 
