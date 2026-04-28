@@ -5,8 +5,21 @@
 # All box runtime env and services live here.
 # Changes to this file take effect on next shell open (no box rebuild needed).
 
-# --- Environment ---
-export DOCKER_HOST="unix:///podman.sock"
+# --- Container runtime (docker CLI → podman) ---
+# Two modes:
+#   1. Host podman shared in: box.toml mounts the host's socket at /podman.sock
+#      (priv). Containers run on the host, in the host's netns.
+#   2. Box-local rootless podman: no /podman.sock mount, podman daemon installed
+#      in the image (workbox). Containers run inside the box's own netns, so
+#      `localhost:<port>` from a shell in the box reaches them.
+if [[ -S /podman.sock ]]; then
+    export DOCKER_HOST="unix:///podman.sock"
+elif command -v podman >/dev/null 2>&1; then
+    systemctl --user enable --now podman.socket >/dev/null 2>&1 || true
+    _box_podman_sock="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"
+    [[ -S "$_box_podman_sock" ]] && export DOCKER_HOST="unix://$_box_podman_sock"
+    unset _box_podman_sock
+fi
 
 [[ "$(pwd)" == /run/host/* ]] && cd ~
 

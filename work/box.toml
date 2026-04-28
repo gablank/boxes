@@ -20,8 +20,6 @@ host = "${HOME}/distrobox/workbox/tailscale"
 container = "/var/lib/tailscale"
 options = "rw,z"
 
-# Files/sockets — must already exist, appended to additional_flags as --volume
-[[mount-file]]
-host = "${XDG_RUNTIME_DIR}/podman/podman.sock"
-container = "/podman.sock"
-options = "rw"
+# Workbox runs its own rootless podman (see work/Containerfile) so containers
+# spawned via docker/compose live in workbox's netns. The host podman socket
+# is intentionally NOT mounted here; priv still uses it.

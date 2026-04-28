@@ -8,7 +8,12 @@ ARG BUILD_SHA=unknown
 #   kubectl, k9s: Kubernetes CLI + TUI dashboard
 #   qemu-base, qemu-img: VM emulation and disk image tools
 #   glab: GitLab CLI
-RUN pacman -Syu --noconfirm --needed kubectl k9s qemu-base qemu-img glab && \
+#   podman + netavark + aardvark-dns + fuse-overlayfs + slirp4netns:
+#     local rootless container runtime so docker/compose-spawned containers
+#     live in workbox's netns (not the host's). Replaces the host podman.sock
+#     bind that priv still uses.
+RUN pacman -Syu --noconfirm --needed kubectl k9s qemu-base qemu-img glab \
+    podman netavark aardvark-dns fuse-overlayfs slirp4netns && \
     pacman -Scc --noconfirm && \
     rm -rf /var/cache/pacman/pkg/*
 
