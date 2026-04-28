@@ -4,12 +4,13 @@
 # Do NOT add user-level setup here; use init-user.sh for that.
 set -euo pipefail
 
-readonly user="${1:?Usage: init-root.sh <username>}"
+readonly user="${1:?Usage: init-root.sh <username> [timezone]}"
+readonly tz="${2:-}"
 
 printf '[box-init] root init start\n'
 
-# Set timezone — BOX_TIMEZONE is injected via pre_init_hooks by the compiler
-tz="${BOX_TIMEZONE:-}"
+# Set timezone — distrobox does not propagate env vars across the init_hooks
+# && chain, so the compiler splices the value in as a positional arg instead.
 if [[ -n "$tz" ]]; then
     if [[ -f "/usr/share/zoneinfo/$tz" ]]; then
         umount /etc/localtime 2>/dev/null || true

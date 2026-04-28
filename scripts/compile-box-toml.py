@@ -42,13 +42,22 @@ def compile_toml(box_dir: pathlib.Path) -> str:
     timezone = distrobox.pop("timezone", "")
     additional_flags = distrobox.pop("additional_flags", "")
 
-    # Inject timezone into init_hooks so init-root.sh can read it
-    # (pre_init_hooks and init_hooks run in separate contexts, so exporting
-    # in pre_init_hooks does not carry over)
+    # Splice timezone as a positional arg to init-root.sh. distrobox does not
+    # propagate env vars across the init_hooks && chain into the bash subshell,
+    # so an `export BOX_TIMEZONE=…` prefix is silently lost.
     if timezone:
         init = distrobox.get("init_hooks", "")
-        export = f"export BOX_TIMEZONE={timezone}"
-        distrobox["init_hooks"] = f"{export} && {init}" if init else export
+        needle = "init-root.sh ${container_user_name}"
+        if needle not in init:
+            print(
+                f"Error: timezone={timezone} set in {toml_path} but init_hooks "
+                f"does not call '{needle}' — cannot pass timezone arg.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        distrobox["init_hooks"] = init.replace(
+            needle, f"{needle} {timezone}", 1
+        )
 
     # Append mount-file entries to additional_flags as --volume
     for mf in mount_files:
