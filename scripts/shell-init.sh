@@ -39,6 +39,11 @@ if [[ -S "/run/host${XDG_RUNTIME_DIR}/pulse/native" ]]; then
     export PULSE_SERVER="unix:/run/host${XDG_RUNTIME_DIR}/pulse/native"
 fi
 
+# --- Rust (rustup) ---
+# Rustup installs toolchain proxy shims (cargo, rustc, rustfmt, ...) to
+# ~/.cargo/bin. The Arch rustup package does not modify PATH automatically.
+[[ -d "$HOME/.cargo/bin" ]] && export PATH="$HOME/.cargo/bin:$PATH"
+
 # --- Tailscale ---
 # tailscaled uses a custom socket path (/var/run/tailscale/box.sock) to avoid
 # distrobox-enter overwriting the default path with a host symlink on every entry.

@@ -13,6 +13,7 @@ RUN pacman-key --init && \
 #   Shell & terminal: zsh tmux btop
 #   Editors: nano vim (vi-vim-symlink from AUR aliases vi -> vim)
 #   Python + polyglot runtime: python (also needed host-side for box.toml compiler), uv, mise (usage is a mise dep)
+#   Rust toolchain manager: rustup (toolchains installed per-user via init-user.sh)
 #   IaC: terraform
 #   Container mgmt: docker docker-compose (talks to host podman socket)
 #   Audio passthrough: pipewire libpipewire pipewire-alsa pipewire-pulse (client libs + ALSA/PA bridges for host PipeWire)
@@ -29,6 +30,7 @@ RUN pacman -S --noconfirm --needed \
     jq tree ripgrep fd unzip zip \
     nano vim \
     python uv mise usage \
+    rustup \
     terraform \
     docker docker-compose \
     pipewire libpipewire pipewire-alsa pipewire-pulse \

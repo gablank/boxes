@@ -14,6 +14,11 @@ if [[ ! -f ~/.zshrc ]] && [[ -f /etc/skel/.zshrc ]]; then
     cp /etc/skel/.zshrc ~/.zshrc
 fi
 
+# --- Install default Rust toolchain via rustup (idempotent) ---
+if command -v rustup >/dev/null 2>&1 && ! rustup show active-toolchain >/dev/null 2>&1; then
+    rustup default stable
+fi
+
 # --- Source shell-init.sh from .zshrc ---
 readonly source_line='source /usr/local/share/box-init/shell-init.sh'
 if ! grep -qF "$source_line" ~/.zshrc 2>/dev/null; then
