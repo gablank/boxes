@@ -42,22 +42,13 @@ def compile_toml(box_dir: pathlib.Path) -> str:
     timezone = distrobox.pop("timezone", "")
     additional_flags = distrobox.pop("additional_flags", "")
 
-    # Splice timezone as a positional arg to init-root.sh. distrobox does not
-    # propagate env vars across the init_hooks && chain into the bash subshell,
-    # so an `export BOX_TIMEZONE=…` prefix is silently lost.
+    # Pass timezone as a TZ env var. distrobox-init unconditionally resets
+    # /etc/localtime to UCT before launching systemd (it umounts the host
+    # bind-mount and ln -sf's UCT), so /etc/localtime tricks are wasted.
+    # TZ in PID 1's environment propagates to systemd children and is
+    # respected by date, journalctl, git, and most modern tooling.
     if timezone:
-        init = distrobox.get("init_hooks", "")
-        needle = "init-root.sh ${container_user_name}"
-        if needle not in init:
-            print(
-                f"Error: timezone={timezone} set in {toml_path} but init_hooks "
-                f"does not call '{needle}' — cannot pass timezone arg.",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        distrobox["init_hooks"] = init.replace(
-            needle, f"{needle} {timezone}", 1
-        )
+        additional_flags += f" --env TZ={timezone}"
 
     # Append mount-file entries to additional_flags as --volume
     for mf in mount_files:
@@ -82,10 +73,6 @@ def compile_toml(box_dir: pathlib.Path) -> str:
 
     if additional_flags:
         lines.append(f"additional_flags={additional_flags}")
-
-    # Box metadata — not consumed by distrobox, read by init-root.sh
-    if timezone:
-        lines.append(f"# box-meta:timezone={timezone}")
 
     return "\n".join(lines) + "\n"
 
