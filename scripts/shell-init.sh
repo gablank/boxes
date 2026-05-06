@@ -21,6 +21,12 @@ elif command -v podman >/dev/null 2>&1; then
     unset _box_podman_sock
 fi
 
+# Point podman at docker's config file so `credHelpers` from
+# `gcloud auth configure-docker` are honored. Without this, podman's default
+# lookup ($XDG_RUNTIME_DIR/containers/auth.json first) shadows ~/.docker/config.json
+# the moment anything writes a login token there.
+export REGISTRY_AUTH_FILE="$HOME/.docker/config.json"
+
 [[ "$(pwd)" == /run/host/* ]] && cd ~
 
 # --- D-Bus ---
