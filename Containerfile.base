@@ -146,11 +146,26 @@ RUN printf '#!/bin/bash\nif [[ -f /etc/environment ]]; then\n    set -a; source 
 RUN printf 'export ZSH=/usr/share/oh-my-zsh\nZSH_THEME="robbyrussell"\nplugins=(git)\nsource "$ZSH/oh-my-zsh.sh"\n' \
         > /etc/skel/.zshrc
 
-# Tailscale systemd override: use a custom socket path so distrobox-enter
-# can't overwrite it with a host symlink on every entry.
+# Tailscale: distrobox's entrypoint forwards every host /run socket into the
+# container as a symlink (see /usr/bin/entrypoint, ~line 1939: it scans
+# /run/host/run for sockets and links each one into the container's matching
+# path). On hosts that run tailscaled, this would put the host's socket at
+# /var/run/tailscale/tailscaled.sock and shadow the in-container daemon.
+#
+# Workaround: bind the in-container daemon to a different socket (box.sock),
+# and replace /usr/bin/tailscale with a wrapper that always passes
+# --socket=/var/run/tailscale/box.sock. This wins for absolute-path callers,
+# cron, and anything else that bypasses PATH. The original binary moves to
+# /usr/bin/tailscale.real. IgnorePkg keeps in-container `pacman -Syu` from
+# overwriting the wrapper; image rebuilds reinstall fresh and re-apply.
 RUN mkdir -p /etc/systemd/system/tailscaled.service.d && \
     printf '[Service]\nExecStart=\nExecStart=/usr/bin/tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/var/run/tailscale/box.sock --port 41641\n' \
         > /etc/systemd/system/tailscaled.service.d/socket-path.conf && \
+    mv /usr/bin/tailscale /usr/bin/tailscale.real && \
+    printf '#!/bin/sh\nexec /usr/bin/tailscale.real --socket=/var/run/tailscale/box.sock "$@"\n' \
+        > /usr/bin/tailscale && \
+    chmod +x /usr/bin/tailscale && \
+    sed -i '/^\[options\]/a IgnorePkg = tailscale' /etc/pacman.conf && \
     systemctl enable tailscaled.service && \
     systemctl enable sshd.service
 
