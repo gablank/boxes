@@ -7,26 +7,27 @@ description: Conventions for the bin/box CLI tool. Use when modifying bin/box, a
 
 ## Design principles
 
-- Pure bash, no external dependencies beyond `distrobox`, `curl`, and standard coreutils; no `gh` CLI required
+- Pure bash, no external dependencies beyond `distrobox`, `curl`, Python 3.11+ (for the box.toml compiler), and standard coreutils; no `gh` CLI required
 - Resolves repo root from its own location so it works from any working directory
-- Auto-discovers boxes by scanning for `*/distrobox.ini` in the repo root
+- Auto-discovers boxes by scanning for `*/box.toml` in the repo root
 - The box argument is always the directory name (`priv`, `work`), not the container name (`privbox`, `workbox`)
+- `box.toml` is the source of truth; commands that mutate config (`init`, `set-image`) edit the toml and recompile to `distrobox.ini` via `scripts/compile-box-toml.py`
 
 ## Command responsibilities
 
 Each command has exactly one responsibility:
 
-- `set-image <box> [tag]` — updates `image=` in the ini (default: `latest`); no pull, no assemble
-- `assemble <box>` — runs `distrobox assemble create` with the current ini; no image tag manipulation
+- `set-image <box> [tag]` — updates `image = ` in `box.toml` and recompiles (default: `latest`); no pull, no assemble
+- `assemble <box>` — recompiles `box.toml` → `distrobox.ini` and runs `distrobox assemble create`; no image tag manipulation
 - `assemble-all` — calls `assemble` for each discovered box
-- `pull <box> [tag]` — `podman pull`; no ini change, no assemble
+- `pull <box> [tag]` — `podman pull`; no toml change, no assemble
 - `images <box>` — lists registry tags; marks the tag the container is built from with `← current` (green), and the tag the next `assemble` will use with `← next` (yellow); `← current` uses `podman inspect` so it appears on stopped containers too
 
 ## Image tag management
 
-- The `image=` line in distrobox.ini is managed by `set-image` and `init`; manual edits are fine
+- The `image = ` line in `box.toml` is managed by `set-image` and `init`; manual edits to `box.toml` are fine (re-run `box assemble` to regenerate the ini), but never hand-edit `distrobox.ini`
 - Old `YYYY-MM-DD` tags are still supported by `time_ago()` alongside the current `YYYY-MM-DDTHHMM` format
-- `images` uses `_image_markers()` (private helper, prefixed `_`) to annotate tags; it checks the ini tag only
+- `images` uses `_image_markers()` (private helper, prefixed `_`) to annotate tags; it reads the tag from `box.toml`
 
 ## Common workflows
 

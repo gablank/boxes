@@ -2,15 +2,17 @@
 
 This file provides instructions for AI coding agents working on this repository.
 
-## Keeping Agent Documentation Up to Date
+## Keeping Agent Documentation Up to Date — BLOCKING
 
-When you make changes to this repository, you MUST update all documentation to reflect those changes. This includes:
+Documentation drift is the #1 maintenance failure in this repo. **Every code change MUST be accompanied by a documentation audit.** A task is not complete until docs are in sync.
 
-- **`README.md`** -- the user-facing doc; if behavior, commands, or conventions change, it must be updated too
-- **`AGENTS.md`** (this file) -- update the repository structure, conventions, or any section that is affected by your changes
-- **`.cursor/rules/*.mdc`** -- update any Cursor rules whose content is invalidated by your changes
+The full protocol — what to check before starting, the per-file audit checklist, and the "removing a workaround" greppable-cleanup rule — lives in `.agents/rules/core.mdc` and is loaded automatically (alwaysApply). Read it. The short version:
 
-Examples: if you add a new box, update the repo structure listing. If you change how the CLI works, update the bin/box CLI section *and* the README command table. If you change the image tag format, update every doc that mentions it. Outdated docs are worse than no docs.
+- **Before** changing code, read the docs that describe the area you're about to change.
+- **After** changing code, walk the per-file checklist in `core.mdc` and update every affected doc surface (`README.md`, `AGENTS.md`, the relevant `.agents/skills/*/SKILL.md`).
+- When **removing** a workaround/alias/feature, `grep -rn` the repo for stale references and delete them all.
+
+Outdated docs are worse than no docs.
 
 ## Proactive Self-Improvement
 
@@ -45,18 +47,21 @@ This repo defines distrobox container environments built via CI and managed loca
 Containerfile.base          Shared base image (Arch Linux + pacman + yay + AUR + Cursor extensions)
 priv/
   Containerfile             Thin layer on base for privbox
-  distrobox.ini             Container definition (managed by bin/box)
+  box.toml                  Container definition — source of truth (distrobox.ini is generated, gitignored)
   local-bin/                Scripts/binaries installed only into privbox
 work/
   Containerfile             Thin layer on base for workbox (adds kubectl, k9s, qemu, glab)
-  distrobox.ini             Container definition (managed by bin/box)
+  box.toml                  Container definition — source of truth
   local-bin/                Scripts/binaries installed only into workbox
 dev/
   Containerfile             Thin layer on base for devbox (no init, no root — for developing box itself)
-  distrobox.ini             Container definition (managed by bin/box)
+  box.toml                  Container definition — source of truth
 local-bin/                  Scripts/binaries installed into ALL boxes
 scripts/
-  init-user.sh              Lightweight runtime init (ssh, zshrc, env vars, chsh)
+  init-root.sh              First-start root init (chsh, /etc/environment) — no TTY
+  init-user.sh              First-start user init (~/.ssh, .zshrc, rustup) — no TTY, no sudo
+  shell-init.sh             Sourced from .zshrc on every shell open — runtime env, services
+  compile-box-toml.py       Compiles box.toml → distrobox.ini (Python 3.11+, stdlib tomllib)
 bin/
   box                       Host-side CLI for managing boxes
 setup.sh                    One-shot setup script for new users / forks
@@ -70,13 +75,13 @@ setup.sh                    One-shot setup script for new users / forks
 2. `build-base` runs only if `Containerfile.base`, `scripts/`, or `local-bin/` changed
 3. `build-priv`, `build-work`, and `build-dev` each run only if base changed OR their own directory changed; they run in parallel after `build-base`
 4. All images are tagged `latest` + `YYYY-MM-DDTHHMM` (e.g. `2026-03-04T0300`, UTC) and pushed to ghcr.io
-5. Locally, `box rebuild <name>` pulls the latest image and recreates the container
+5. Locally, `box pull <name> && box assemble <name>` pulls the latest image and recreates the container
 
 `<repo-owner>` is derived from `github.repository_owner` in CI — no hardcoding, so forks work out of the box.
 
 ## Containerfile Conventions
 
-- `Containerfile.base` installs everything shared: pacman packages, yay, AUR packages, Cursor extensions, system fixes, `scripts/init-user.sh`, and `local-bin/`
+- `Containerfile.base` installs everything shared: pacman packages, yay, AUR packages, Cursor extensions, system fixes, the three `scripts/` init scripts (init-root.sh, init-user.sh, shell-init.sh), and `local-bin/`
 - Box-specific Containerfiles (`priv/Containerfile`, `work/Containerfile`, `dev/Containerfile`) declare `ARG BASE_IMAGE=ghcr.io/gablank/box-base:latest` followed by `FROM ${BASE_IMAGE}`. CI overrides `BASE_IMAGE` to point to the fork owner's registry.
 - Build context is always the repo root
 - Both base and box Containerfiles accept `BUILD_DATE` and `BUILD_SHA` build args, written to `/etc/box-build-info`
@@ -95,11 +100,11 @@ Add it to the extension install loop in `Containerfile.base`.
 
 - Pure bash, uses `distrobox` and `curl`; no `gh` CLI required
 - Box argument is always the directory name (`priv`, `work`), not the container name
-- Auto-discovers boxes by scanning for `*/distrobox.ini`
+- Auto-discovers boxes by scanning for `*/box.toml`
 - `OWNER` is auto-detected from the git remote URL (`github.com:<owner>/...`); override with `BOX_OWNER` env var
-- `box init [owner]` updates the `image=` line in all `distrobox.ini` files to use the specified (or auto-detected) owner; called automatically by `setup.sh`
-- `box set-image <box> [tag]` updates the `image=` line in the ini (default: `latest`); does not rebuild
-- `box assemble <box>` runs `distrobox assemble create` with whatever is in the ini; does not touch the image tag
+- `box init [owner]` updates the `image = ` line in all `box.toml` files (then recompiles to `distrobox.ini`) to use the specified (or auto-detected) owner; called automatically by `setup.sh`
+- `box set-image <box> [tag]` updates the `image = ` line in `box.toml` and recompiles (default: `latest`); does not rebuild
+- `box assemble <box>` recompiles `box.toml` → `distrobox.ini` and runs `distrobox assemble create`; does not touch the image tag
 - `box assemble-all` assembles all boxes
 - `box pull <box> [tag]` pulls the image via `podman pull` without touching the container or ini; uses the tag currently in the ini if none specified
 - `box images <box>` lists available tags with a human-readable age column; marks the tag the container is built from with `← current` (green) and the tag the next `assemble` will use with `← next` (yellow)
@@ -135,21 +140,22 @@ When adding a new command:
 - Use `local` for function-scoped variables
 - No comments explaining obvious code
 
-## distrobox.ini Conventions
+## box.toml Conventions
 
-- `home` and `volume` use `${HOME}` and `${XDG_RUNTIME_DIR}` — expanded by distrobox on the host, never hardcode paths
+`box.toml` is the source of truth; `distrobox.ini` is generated by `scripts/compile-box-toml.py` and gitignored. **Never edit the ini directly.**
+
+- `home` and `[[mount-dir]]` host paths use `${HOME}` / `${XDG_RUNTIME_DIR}` — expanded by distrobox on the host, never hardcode paths
 - `init_hooks` use `${container_user_name}` (a distrobox-init shell variable guaranteed in scope at eval time) — **not** `${USER}`, which is unbound when init_hooks run inside the container
-- `distrobox assemble` expands host-side env vars at runtime, so `${HOME}` and `${XDG_RUNTIME_DIR}` resolve correctly for any user
-- All boxes use `additional_flags=--security-opt seccomp=unconfined` (required for bubblewrap/bwrap inside the container)
-- **Tailscale per-box**: each box has its own tailscale node (different tailnet per box) via `unshare_netns=true`. This gives the box its own network namespace whose user namespace it owns, making `CAP_NET_ADMIN` valid for `TUNSETIFF`. Setup:
-  - `unshare_netns=true` in the ini
-  - `volume=${HOME}/distrobox/<box>/tailscale:/var/lib/tailscale:rw,z` — persists auth state across recreates
+- `[[mount-dir]]` entries become `volume=` lines (auto-created on host); `[[mount-file]]` entries become `--volume` flags in `additional_flags` (must already exist)
+- All boxes use `--security-opt seccomp=unconfined` (required for bubblewrap/bwrap inside the container)
+- **Tailscale per-box**: each box has its own tailscale node (different tailnet per box) via `unshare_netns=true`. The box's user namespace owns the netns, making `CAP_NET_ADMIN` valid for `TUNSETIFF`. Setup:
+  - `unshare_netns=true`
+  - `[[mount-dir]]` for `${HOME}/distrobox/<box>/tailscale:/var/lib/tailscale` — persists auth state across recreates
   - `--device /dev/net/tun --cap-add NET_ADMIN --cap-add NET_RAW` in `additional_flags`
-  - `rm -f /var/run/tailscale/tailscaled.sock && tailscaled --statedir=/var/lib/tailscale &` appended to `init_hooks` — removes distrobox's automatic symlink to the host daemon so tailscaled writes its own socket at the default path
-  - `shell-init.sh` (sourced from `.zshrc`) removes any stale host symlink and restarts tailscaled on shell open if the socket is gone (covers host reboots)
+  - **No init_hooks tweaks needed.** The base image ships a systemd drop-in that runs `tailscaled` with `--socket=/var/run/tailscale/box.sock` and a `/usr/bin/tailscale` wrapper that injects the same flag. This sidesteps the issue where distrobox-init symlinks the host's tailscale socket over the default path inside the container. See `Containerfile.base` for the wrapper definition; `IgnorePkg` keeps in-container `pacman -Syu` from overwriting it.
   - After first `box assemble <box>`, run `tailscale up` inside the box to authenticate
 - **Docker-compose + work tailnet**: to make compose services reachable from the work box *and* on the work tailnet, add `network_mode: "container:workbox"` to each service in the compose file. Services then share workbox's network namespace; use `localhost:PORT` to reach them from the box.
-- See `.agents/skills/distrobox-ini-conventions/SKILL.md` for the full template and command reference
+- See `.agents/skills/box-toml-conventions/SKILL.md` for the full template and field reference
 
 ## Adding or Removing a Box
 

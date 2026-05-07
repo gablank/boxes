@@ -54,13 +54,13 @@ box enter work
 ## The `box` CLI
 
 ```
-box init        [owner]         Set image registry owner in all ini files (default: git remote)
+box init        [owner]         Set image registry owner in all box.toml files (default: git remote)
 box list                        List all boxes with status and image tag
 box enter       <box>           Enter a box
-box set-image   <box> [tag]     Set the image tag in the ini (default: latest)
-box assemble    <box>           Create/recreate box from current ini
+box set-image   <box> [tag]     Set the image tag in box.toml (default: latest)
+box assemble    <box>           Create/recreate box from current box.toml
 box assemble-all                Assemble all boxes
-box pull        <box> [tag]     Pull image without rebuilding (default: current tag in ini)
+box pull        <box> [tag]     Pull image without rebuilding (default: current tag in box.toml)
 box stop        <box>           Stop a box
 box status      <box>           Show detailed box info and build metadata
 box logs        <box>           Show init log
@@ -95,8 +95,8 @@ This repo is designed to be forked. When you fork and push to GitHub, CI automat
 
 4. Pull and start your boxes:
    ```bash
-   box rebuild priv
-   box rebuild work
+   box pull priv && box assemble priv
+   box pull work && box assemble work
    ```
 
 If you ever need to manually re-point image URLs (e.g. after changing the remote), run:
@@ -163,7 +163,10 @@ dev/
   box.toml              Container definition (source of truth)
 local-bin/              Scripts installed into ALL boxes
 scripts/
-  init-user.sh          Runtime user init (runs once on first container start)
+  init-root.sh          First-start root init (chsh, /etc/environment)
+  init-user.sh          First-start user init (~/.ssh, .zshrc, rustup)
+  shell-init.sh         Sourced from .zshrc on every shell open
+  compile-box-toml.py   Compiles box.toml → distrobox.ini
 bin/
   box                   Host-side CLI
 setup.sh                One-shot setup script for new users

@@ -33,11 +33,19 @@ Path-based build skipping: base rebuilds only when `Containerfile.base`, `script
 There is no test suite beyond the CI lint job. To run the lint checks locally:
 
 ```bash
-# Verify completions output contains all commands
-bash -c 'source <(bin/box completions bash); _box_completions'
-bin/box completions zsh | grep -c 'commands'
+# Mirror what CI does: every entry in _BOX_COMMANDS must appear in completions output.
+# Run under bash explicitly — `mapfile` is bash-only.
+bash -c '
+  mapfile -t declared < <(grep -oP "(?<=_BOX_COMMANDS=\()[^)]*" bin/box | tr " " "\n" | grep -v "^$")
+  bin/box completions bash > /tmp/box_bash.txt
+  bin/box completions zsh  > /tmp/box_zsh.txt
+  for cmd in "${declared[@]}"; do
+      grep -q "$cmd" /tmp/box_bash.txt || echo "MISSING from bash: $cmd"
+      grep -q "$cmd" /tmp/box_zsh.txt  || echo "MISSING from zsh:  $cmd"
+  done
+'
 
-# Verify _BOX_COMMANDS matches case dispatch (what CI does)
+# Compare _BOX_COMMANDS array to case dispatch arms
 grep '_BOX_COMMANDS=' bin/box
 grep -oP '^\s+\K[a-z-]+(?=\))' bin/box  # extract case arms
 ```
@@ -82,4 +90,6 @@ Never add secrets, tokens, credentials, personal data, or private keys. Use runt
 
 ## Agent Docs
 
-Detailed conventions live in `.agents/skills/` (repo-overview, shell-style, containerfile-conventions, distrobox-ini-conventions, box-cli-conventions, adding-a-box) and `.agents/rules/` (core, self-improve). Update these when behavior changes.
+Detailed conventions live in `.agents/skills/` (repo-overview, shell-style, containerfile-conventions, box-toml-conventions, box-cli-conventions, adding-a-box) and `.agents/rules/` (core, self-improve). Update these when behavior changes.
+
+`.agents/rules/core.mdc` is `alwaysApply: true` and contains a **blocking documentation-sync protocol** — read it. Every code change must be accompanied by a doc audit using the per-file checklist in that rule.
