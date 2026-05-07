@@ -49,11 +49,3 @@ fi
 # Rustup installs toolchain proxy shims (cargo, rustc, rustfmt, ...) to
 # ~/.cargo/bin. The Arch rustup package does not modify PATH automatically.
 [[ -d "$HOME/.cargo/bin" ]] && export PATH="$HOME/.cargo/bin:$PATH"
-
-# --- Tailscale ---
-# tailscaled uses a custom socket path (/var/run/tailscale/box.sock) to avoid
-# distrobox-enter overwriting the default path with a host symlink on every entry.
-# Point the CLI at the custom socket.
-if [[ -d /var/lib/tailscale ]]; then
-    alias tailscale='tailscale --socket=/var/run/tailscale/box.sock'
-fi
