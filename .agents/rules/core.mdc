@@ -7,9 +7,42 @@ alwaysApply: true
 
 This repo is PUBLIC. NEVER add secrets, tokens, credentials, personal data, private keys, or internal hostnames. Use runtime env vars for secrets.
 
-# Maintain Docs
+# Documentation Sync — BLOCKING
 
-When you change the repo, update `README.md`, `AGENTS.md`, and any affected `.cursor/skills/*/SKILL.md` or `.cursor/rules/` to stay in sync. `README.md` is the user-facing doc — if behavior, commands, or conventions change, it must be updated too. Outdated docs are worse than none.
+Documentation drift is the #1 maintenance failure in this repo. **Every code change MUST be accompanied by a documentation audit in the same PR/commit series.** Do not consider a task complete until this checklist is satisfied.
+
+## Before you start coding
+
+Read the docs that describe the area you're about to change:
+
+- `README.md` — user-facing
+- `CLAUDE.md` and `AGENTS.md` — top-level agent instructions
+- `.agents/skills/<topic>/SKILL.md` — the skill closest to your change
+- `.agents/rules/*.mdc` — repo-wide rules
+
+If a doc is already wrong about current behavior, fix it as part of your change.
+
+## After every change, audit these surfaces
+
+For each file you touched, run through the matching checklist below. If you can't immediately confirm a doc is still accurate, **read it and verify** — don't assume.
+
+| If you changed... | You MUST check |
+|---|---|
+| `bin/box` (commands, args, flags, behavior) | `_BOX_COMMANDS` array, case dispatch, `usage()`, both completions heredocs, `README.md` CLI table + workflows, `AGENTS.md` bin/box section, `.agents/skills/box-cli-conventions/SKILL.md` |
+| `Containerfile.base` or per-box `Containerfile` | `README.md` package-list / customization sections, `AGENTS.md` Containerfile Conventions, `.agents/skills/containerfile-conventions/SKILL.md`, comments inside the Containerfile (remove stale workaround notes) |
+| `box.toml` (any box) or `compile-box-toml.py` | `.agents/skills/box-toml-conventions/SKILL.md`, `AGENTS.md` box.toml conventions section, `.agents/skills/adding-a-box/SKILL.md` template |
+| `scripts/init-root.sh`, `init-user.sh`, `shell-init.sh` | `AGENTS.md` Repository Structure (script inventory), `.agents/skills/box-toml-conventions/SKILL.md` "Init script execution contexts" table |
+| `.github/workflows/build.yml` | `AGENTS.md` "Image Build Flow" + path-filter notes, `.agents/skills/adding-a-box/SKILL.md` CI section |
+| Adding/removing a box | Run the full `.agents/skills/adding-a-box/SKILL.md` checklist |
+| Adding a new top-level directory copied into images | Path filters in `build.yml`, `Containerfile.base` COPY, `AGENTS.md` Repository Structure, `.agents/skills/repo-overview/SKILL.md` |
+
+## When you remove a workaround or feature
+
+Greppable cleanup: when a workaround, alias, env var, helper, or feature is removed, search the repo for **every** mention of it (`grep -rn <name>`) and delete the dead references. Stale instructions that point at code that no longer exists are worse than no docs.
+
+## Maintenance contracts
+
+When you add something that must stay in sync with something else (e.g., an array that mirrors a case block, a CI matrix that mirrors a directory list), document the contract in `AGENTS.md` and the relevant skill — not as a comment in source. Future agents will not read source comments to learn invariants.
 
 # Git Commits
 
