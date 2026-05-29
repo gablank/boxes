@@ -213,17 +213,24 @@ jobs:
             for (const image of images) {
               let versions;
               try {
-                versions = await github.rest.packages.getAllPackageVersionsForPackageOwnedByUser({
-                  package_type: 'container',
-                  package_name: image,
-                  username: owner,
-                });
+                // Paginate: the unpaginated call returns only the first 30
+                // versions (all recent), so old versions were never examined
+                // and nothing past the cutoff ever got deleted.
+                versions = await github.paginate(
+                  github.rest.packages.getAllPackageVersionsForPackageOwnedByUser,
+                  {
+                    package_type: 'container',
+                    package_name: image,
+                    username: owner,
+                    per_page: 100,
+                  }
+                );
               } catch (e) {
                 console.log(`Skipping ${image}: ${e.message}`);
                 continue;
               }
 
-              for (const version of versions.data) {
+              for (const version of versions) {
                 const updatedAt = new Date(version.updated_at);
                 const tags = version.metadata?.container?.tags || [];
                 if (updatedAt < cutoff && !tags.includes('latest')) {
