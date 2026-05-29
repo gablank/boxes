@@ -46,5 +46,6 @@ When you add something that must stay in sync with something else (e.g., an arra
 
 # Git Commits
 
+- Format: `<type>(<scope>): <message>` — types: `feat`, `fix`, `refactor`, `docs`, `ci`, `chore`
 - Split commits logically: CI changes, doc/skill updates, and rule changes each get their own commit
 - Never push, and never ask whether to push, unless the user explicitly requests it
