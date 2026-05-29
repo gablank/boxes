@@ -564,7 +564,13 @@ cmd_images() {
 }
 
 _completions_bash() {
-    cat <<'BASH'
+    # Interpolate the command lists from the single-source-of-truth arrays.
+    # Placeholders below are substituted so completions never drift from
+    # _BOX_COMMANDS / _BOX_COMMANDS_WITH_BOX. No command name contains '/'.
+    local cmds="${_BOX_COMMANDS[*]}"
+    local box_cmds
+    box_cmds="$(IFS='|'; printf '%s' "${_BOX_COMMANDS_WITH_BOX[*]}")"
+    sed -e "s/@@CMDS@@/${cmds}/" -e "s/@@BOX_CMDS@@/${box_cmds}/" <<'BASH'
 _box_completion() {
     local cur prev words cword
     _init_completion 2>/dev/null || {
@@ -579,12 +585,12 @@ _box_completion() {
     commands="$(box --list-boxes 2>/dev/null | tr '\n' ' ')"
 
     if [[ $cword -eq 1 ]]; then
-        COMPREPLY=( $(compgen -W "init list enter rescue set-image build assemble assemble-all pull stop status logs images completions help" -- "$cur") )
+        COMPREPLY=( $(compgen -W "@@CMDS@@" -- "$cur") )
         return 0
     fi
 
     case "${words[1]}" in
-        enter|rescue|set-image|build|assemble|pull|stop|status|logs|images)
+        @@BOX_CMDS@@)
             if [[ $cword -eq 2 ]]; then
                 COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
             fi
@@ -602,7 +608,13 @@ BASH
 }
 
 _completions_zsh() {
-    cat <<'ZSH'
+    # The box-taking command subset is interpolated from _BOX_COMMANDS_WITH_BOX
+    # so it never drifts. The descriptive command list in _box_commands() below
+    # carries human-authored descriptions and is verified against _BOX_COMMANDS
+    # by the CI lint job.
+    local box_cmds
+    box_cmds="$(IFS='|'; printf '%s' "${_BOX_COMMANDS_WITH_BOX[*]}")"
+    sed -e "s/@@BOX_CMDS@@/${box_cmds}/" <<'ZSH'
 #compdef box
 
 _box() {
@@ -616,7 +628,7 @@ _box() {
     case $state in
         args)
             case $words[1] in
-                enter|rescue|set-image|build|assemble|pull|stop|status|logs|images)
+                @@BOX_CMDS@@)
                     _arguments '1: :_box_boxes'
                     ;;
                 completions)
