@@ -21,6 +21,11 @@ except ModuleNotFoundError:
     sys.exit(1)
 
 
+def _fail(toml_path: pathlib.Path, msg: str) -> None:
+    print(f"Error in {toml_path}: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
 def compile_toml(box_dir: pathlib.Path) -> str:
     toml_path = box_dir / "box.toml"
     with open(toml_path, "rb") as f:
@@ -29,6 +34,19 @@ def compile_toml(box_dir: pathlib.Path) -> str:
     distrobox = dict(cfg.get("distrobox", {}))
     mount_dirs = cfg.get("mount-dir", [])
     mount_files = cfg.get("mount-file", [])
+
+    # Validate up front so failures point at box.toml with a clear message,
+    # instead of a raw KeyError traceback or a confusing distrobox error later.
+    if not distrobox.get("image"):
+        _fail(toml_path, "[distrobox] is missing a required 'image' key")
+    for section, entries in (("mount-dir", mount_dirs), ("mount-file", mount_files)):
+        for i, entry in enumerate(entries):
+            for required in ("host", "container"):
+                if required not in entry:
+                    _fail(
+                        toml_path,
+                        f"[[{section}]] entry #{i + 1} is missing required key '{required}'",
+                    )
 
     name = distrobox.get("name", box_dir.name)
 
