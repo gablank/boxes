@@ -486,15 +486,39 @@ cmd_images() {
         "https://$REGISTRY/token?scope=repository:${repo}:pull&service=ghcr.io" \
         | grep -o '"token":"[^"]*"' | cut -d'"' -f4 || true)"
     if [[ -n "$token" ]]; then
-        local tags_json
-        tags_json="$(curl -sf --max-time 5 \
-            -H "Authorization: Bearer $token" \
-            "https://$REGISTRY/v2/${repo}/tags/list" || true)"
-        if [[ -n "$tags_json" ]]; then
-            date_tags="$(printf '%s' "$tags_json" \
-                | grep -o '"[0-9][^"]*"' | tr -d '"' | sort -r)"
+        # GHCR returns tags oldest-first, paginated, advertising further pages
+        # via the "Link: ...; rel=\"next\"" header. Walk every page so the newest
+        # tags (on later pages) are not silently dropped. The Link header echoes
+        # "n=0", which GHCR serves unreliably (empty results) — so force our own
+        # page size and only reuse the header's "last=" cursor.
+        local all_json="" url="/v2/${repo}/tags/list?n=100" headers body next
+        local page=0
+        while [[ -n "$url" && "$page" -lt 50 ]]; do
+            page=$((page + 1))
+            headers="$(mktemp)"
+            body="$(curl -sf --max-time 5 -D "$headers" \
+                -H "Authorization: Bearer $token" \
+                "https://$REGISTRY$url" || true)"
+            next="$(grep -i '^link:' "$headers" \
+                | grep -o '<[^>]*>' | tr -d '<>' || true)"
+            rm -f "$headers"
+            all_json+="$body"$'\n'
+            [[ -n "$body" ]] || break
+            # Drop GHCR's bogus n=0 and pin our own page size.
+            if [[ -n "$next" ]]; then
+                next="$(printf '%s' "$next" | sed 's/[?&]n=[0-9]*//')"
+                case "$next" in
+                    *\?*) next+="&n=100" ;;
+                    *)    next+="?n=100" ;;
+                esac
+            fi
+            url="$next"
+        done
+        if [[ -n "${all_json//[$'\n']/}" ]]; then
+            date_tags="$(printf '%s' "$all_json" \
+                | grep -o '"[0-9][^"]*"' | tr -d '"' | sort -ru)"
             latest_date="$(printf '%s' "$date_tags" | head -1)"
-            printf '%s' "$tags_json" | grep -q '"latest"' && has_latest=1
+            printf '%s' "$all_json" | grep -q '"latest"' && has_latest=1
         fi
     fi
 
