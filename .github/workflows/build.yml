@@ -79,6 +79,16 @@ jobs:
 
           printf "OK: all dispatched commands present in _BOX_COMMANDS\n"
 
+      - name: Shellcheck
+        run: |
+          # Error-level only: the CLI relies on intentional word-splitting
+          # (unquoted $rflag/$podman_cmd, SC2086 = info) and the
+          # `local x="$(...)"` idiom throughout (SC2155 = warning), both of
+          # which are deliberate. --severity=error catches genuine bugs
+          # (parse errors, definitely-wrong constructs) without false noise.
+          # Tighten the threshold once those patterns carry inline disables.
+          shellcheck --severity=error --shell=bash bin/box scripts/*.sh setup.sh
+
   changes:
     runs-on: ubuntu-latest
     outputs:
@@ -201,12 +211,20 @@ jobs:
     permissions:
       packages: write
     steps:
+      - uses: actions/checkout@v4
+
       - name: Delete image versions older than 14 days
         uses: actions/github-script@v7
         with:
           script: |
+            const fs = require('fs');
             const owner = context.repo.owner;
-            const images = ['box-base', 'box-priv', 'box-work', 'box-dev'];
+            // Auto-discover boxes by scanning for */box.toml (mirrors bin/box),
+            // so adding or removing a box needs no edit here. Always include base.
+            const boxes = fs.readdirSync('.', { withFileTypes: true })
+              .filter(d => d.isDirectory() && fs.existsSync(`${d.name}/box.toml`))
+              .map(d => `box-${d.name}`);
+            const images = ['box-base', ...boxes];
             const keepDays = 14;
             const cutoff = new Date(Date.now() - keepDays * 86400000);
 
