@@ -48,9 +48,7 @@ In `.github/workflows/build.yml`:
   [[ "$base" == "true" || "$dev" == "true" ]] && boxes+=('"dev"')
   ```
 
-- **Cleanup image list** — add `'box-dev'` to the `images` array in the cleanup job.
-
-The dynamic matrix (`fromJson`) and `build-boxes` job handle the rest — no other CI changes needed.
+The dynamic matrix (`fromJson`) and `build-boxes` job handle the rest — no other CI changes needed. The `cleanup` job auto-discovers boxes by scanning for `*/box.toml`, so its image list needs no edit.
 
 ## 3. Update documentation
 
@@ -71,4 +69,4 @@ These are auto-discovered or generic — no updates required:
 
 ## Removing a Box
 
-Reverse the steps above: delete the box directory, remove from CI (all four places), and remove from documentation (all three files).
+Reverse the steps above: delete the box directory, remove from CI (path filter, build-flags variable + force line, matrix wiring — the cleanup job auto-discovers, so nothing to remove there), and remove from documentation (all three files).

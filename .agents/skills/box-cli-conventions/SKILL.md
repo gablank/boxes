@@ -41,7 +41,7 @@ Each command has exactly one responsibility:
 
 Completions are embedded in `bin/box` and output by `box completions bash` / `box completions zsh`. `setup.sh` installs them by appending `eval "$(box completions <shell>)"` to `~/.bashrc` / `~/.zshrc`. Because the eval runs at shell startup, completions always reflect the current `bin/box` after a `git pull` — no manual reinstall needed.
 
-**Single source of truth:** `_BOX_COMMANDS` array at the top of `bin/box`. The CI `lint` job verifies the case dispatch matches it.
+**Single source of truth:** `_BOX_COMMANDS` (all commands) and `_BOX_COMMANDS_WITH_BOX` (commands whose first arg is a box) at the top of `bin/box`. The completion heredocs do **not** hardcode command lists — they carry `@@CMDS@@` / `@@BOX_CMDS@@` placeholders that `_completions_bash`/`_completions_zsh` substitute from those arrays via `sed`. Keep the arrays correct and the completions follow automatically. The CI `lint` job verifies the case dispatch matches `_BOX_COMMANDS` and that both completions contain every command.
 
 ## Adding a new command
 
@@ -50,5 +50,5 @@ Completions are embedded in `bin/box` and output by `box completions bash` / `bo
 3. Add it to the `usage()` help text
 4. Validate arguments (box name, required args) at the top of the function
 5. **Add the command name to `_BOX_COMMANDS`** — CI will fail if this is missing
-6. If the command takes `<box>` as its first arg, also add it to `_BOX_COMMANDS_WITH_BOX`
-7. Add a description line to the zsh `_box_commands()` helper inside `_completions_zsh()`
+6. If the command takes `<box>` as its first arg, also add it to `_BOX_COMMANDS_WITH_BOX` (both arrays drive the completion heredocs via placeholder substitution — no hand-editing of command lists in the heredocs)
+7. Add a description line to the zsh `_box_commands()` helper inside `_completions_zsh()` (the only manually maintained completion text)

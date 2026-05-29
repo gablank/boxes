@@ -123,13 +123,37 @@ When adding a new command:
 1. Add `cmd_<name>()` and the case entry (as above)
 2. **Add the name to `_BOX_COMMANDS`** — the CI `lint` job will fail if a case dispatch command is missing from `_BOX_COMMANDS`
 3. If the command takes `<box>` as its first argument, also add it to `_BOX_COMMANDS_WITH_BOX`
-4. Update the bash and zsh completion heredocs inside `cmd_completions` with the new command (description for zsh)
+4. If the command needs a description in zsh tab-completion, add a line to the `_box_commands()` helper inside `_completions_zsh()`
+
+The completion heredocs **interpolate** the command lists from the arrays at runtime via placeholder substitution (`@@CMDS@@`, `@@BOX_CMDS@@`): the bash top-level list comes from `_BOX_COMMANDS`, and the box-taking subset in both shells comes from `_BOX_COMMANDS_WITH_BOX`. You do **not** hand-edit those lists — keeping the arrays correct (steps 2–3) is enough. The only manually maintained completion text is the descriptive `_box_commands()` list in zsh (step 4).
 
 **Box names** are always discovered dynamically via `box --list-boxes` at completion time — no manual sync needed when adding a new box.
 
 **CI enforcement:** The `lint` job in `.github/workflows/build.yml` runs on every push and verifies:
 - `box completions bash` and `box completions zsh` both exit 0 and contain every entry in `_BOX_COMMANDS`
 - Every command extracted from the `case` dispatch block exists in `_BOX_COMMANDS`
+- `shellcheck --severity=error` passes on `bin/box`, `scripts/*.sh`, and `setup.sh`
+
+## Local checks
+
+There is no test suite; the CI `lint` job is the only gate. Mirror it locally before pushing:
+
+```bash
+# Every _BOX_COMMANDS entry must appear in both completion outputs.
+# Run under bash — `mapfile` is bash-only.
+bash -c '
+  mapfile -t declared < <(grep -oP "(?<=_BOX_COMMANDS=\()[^)]*" bin/box | tr " " "\n" | tr -d "()" | grep -v "^$")
+  for sh in bash zsh; do
+    out="$(bin/box completions "$sh")"
+    for cmd in "${declared[@]}"; do
+      grep -q "$cmd" <<<"$out" || echo "MISSING from $sh: $cmd"
+    done
+  done
+'
+
+# Static analysis (CI runs this at --severity=error)
+shellcheck --severity=error --shell=bash bin/box scripts/*.sh setup.sh
+```
 
 ## Shell Script Style
 
@@ -138,6 +162,7 @@ When adding a new command:
 - Quote all variable expansions: `"$var"`
 - Use `printf` over `echo` for formatted output
 - Use `local` for function-scoped variables
+- ANSI colors via `$'\033[...'` (dollar-quote syntax)
 - No comments explaining obvious code
 
 ## box.toml Conventions
