@@ -3,7 +3,11 @@ FROM archlinux:latest
 ARG BUILD_DATE=unknown
 ARG BUILD_SHA=unknown
 
-RUN pacman-key --init && \
+# archlinux:latest strips man pages from /usr/share/man/* and may carry
+# NoExtract filters that block re-extraction. Drop any such filter up front
+# so every package we install from here on ships its man pages.
+RUN sed -i '/^NoExtract.*usr\/share\/\(man\|info\)/d' /etc/pacman.conf && \
+    pacman-key --init && \
     pacman-key --populate archlinux && \
     pacman -Syu --noconfirm
 
@@ -37,8 +41,7 @@ RUN pacman -S --noconfirm --needed \
     github-cli git-absorb diff-so-fancy \
     bubblewrap socat libseccomp \
     tailscale \
-    breeze-gtk xdg-desktop-portal-kde && \
-    mandb
+    breeze-gtk xdg-desktop-portal-kde
 
 # Switch iptables/ip6tables to nftables backend (host kernel lacks ip_tables module)
 RUN ln -sf /usr/bin/xtables-nft-multi /usr/bin/iptables && \
@@ -184,6 +187,11 @@ RUN chmod +x /usr/local/bin/* 2>/dev/null || true
 
 RUN printf 'build_date=%s\nbuild_sha=%s\nimage=box-base\n' \
         "$BUILD_DATE" "$BUILD_SHA" > /etc/box-build-info
+
+# Force-reinstall every native package so any man/info pages that the base
+# image stripped post-bootstrap come back, then rebuild the mandb index.
+RUN pacman -Qqn | pacman -S --noconfirm --overwrite '*' - && \
+    mandb --quiet
 
 RUN rm -rf /tmp/* && \
     rm -f /etc/sudoers.d/builduser && \
