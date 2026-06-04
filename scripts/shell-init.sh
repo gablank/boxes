@@ -49,3 +49,19 @@ fi
 # Rustup installs toolchain proxy shims (cargo, rustc, rustfmt, ...) to
 # ~/.cargo/bin. The Arch rustup package does not modify PATH automatically.
 [[ -d "$HOME/.cargo/bin" ]] && export PATH="$HOME/.cargo/bin:$PATH"
+
+# --- Per-box prompt badge ---
+# Make it obvious which box a shell belongs to. CONTAINER_ID is set by distrobox
+# to the container name; the hostname is shared with the host so it can't be used.
+# Each box gets a distinct color. This runs after oh-my-zsh has set PROMPT (the
+# source line is appended below the theme in ~/.zshrc), so we prepend to it.
+if [[ -n "${ZSH_VERSION:-}" ]] && [[ -n "${CONTAINER_ID:-}" ]]; then
+    case "$CONTAINER_ID" in
+        workbox) _box_color="yellow" ;;
+        privbox) _box_color="red" ;;
+        devbox)  _box_color="blue" ;;
+        *)       _box_color="white" ;;
+    esac
+    PROMPT="%F{$_box_color}[${CONTAINER_ID%box}]%f $PROMPT"
+    unset _box_color
+fi
