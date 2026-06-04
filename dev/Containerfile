@@ -4,5 +4,11 @@ FROM ${BASE_IMAGE}
 ARG BUILD_DATE=unknown
 ARG BUILD_SHA=unknown
 
+# Dev-specific packages:
+#   shellcheck: mirror the CI `lint` job locally (bin/box, scripts/*.sh, setup.sh)
+RUN pacman -Syu --noconfirm --needed shellcheck && \
+    pacman -Scc --noconfirm && \
+    rm -rf /var/cache/pacman/pkg/*
+
 RUN printf 'build_date=%s\nbuild_sha=%s\nimage=box-dev\n' \
         "$BUILD_DATE" "$BUILD_SHA" > /etc/box-build-info

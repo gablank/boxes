@@ -138,7 +138,7 @@ The completion heredocs **interpolate** the command lists from the arrays at run
 
 ## Local checks
 
-There is no test suite; the CI `lint` job is the only gate. Mirror it locally before pushing:
+There is no test suite; the CI `lint` job is the only gate. Mirror it locally before pushing. The `dev` box ships `shellcheck` (added in `dev/Containerfile`) so the static-analysis step below runs out of the box:
 
 ```bash
 # Every _BOX_COMMANDS entry must appear in both completion outputs.
