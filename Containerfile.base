@@ -193,6 +193,15 @@ RUN printf 'build_date=%s\nbuild_sha=%s\nimage=box-base\n' \
 RUN pacman -Qqn | pacman -S --noconfirm --overwrite '*' - && \
     mandb --quiet
 
+# The blanket reinstall above (for man pages) reinstalls the tailscale package,
+# which overwrites the /usr/bin/tailscale wrapper created earlier with the stock
+# binary (explicitly-named packages install despite IgnorePkg). Re-apply the
+# wrapper here, after the reinstall. tailscale.real is a non-package path and is
+# left untouched by the reinstall, so the wrapper's exec target is still valid.
+RUN printf '#!/bin/sh\nexec /usr/bin/tailscale.real --socket=/var/run/tailscale/box.sock "$@"\n' \
+        > /usr/bin/tailscale && \
+    chmod +x /usr/bin/tailscale
+
 RUN rm -rf /tmp/* && \
     rm -f /etc/sudoers.d/builduser && \
     userdel -r builduser 2>/dev/null || true && \
