@@ -24,9 +24,11 @@ Beyond keeping docs in sync, agents must **proactively** improve this repository
 
 This is enforced by `.cursor/rules/self-improve.mdc`.
 
-## Active Workarounds — Always Ask
+## Workarounds & Known Gotchas
 
-**distrobox-enter `--pty` patch (2026-04-17):** The host has a patched copy of `distrobox-enter` in `~/.local/bin/` that removes the `--pty` flag from the `unshare_groups` su block. This works around distrobox issue [#2011](https://github.com/89luca89/distrobox/issues/2011) where newer util-linux passes `--pty` through to zsh. The upstream fix is in PR [#2053](https://github.com/89luca89/distrobox/pull/2053). **At the start of every conversation, ask the user whether this patch has been reverted.**
+There are currently **no** active host-side workarounds that need a per-conversation check. This section records resolved ones so a recurrence is recognised fast.
+
+**distrobox-enter `--pty` patch — REMOVED, do NOT re-apply (resolved 2026-06-04):** From 2026-04-17 the host carried a patched `~/.local/bin/distrobox-enter` that stripped `--pty` from the su block, working around distrobox issue [#2011](https://github.com/89luca89/distrobox/issues/2011) (PR [#2053](https://github.com/89luca89/distrobox/pull/2053)) where `su --pty` killed the shell on Ctrl+C. **That upstream bug is now fixed, and the patch became the cause of a new breakage.** On rootful + init boxes (`priv`, `work`), distrobox switches user via `su` over a `podman exec -t` pty; `--pty` is what gives that shell its *controlling terminal*. With #2011 fixed, stripping `--pty` no longer helped Ctrl+C and instead dropped the controlling terminal — so `Ctrl+C` printed `Session terminated, killing shell...`, `Ctrl+R` failed with `failed to open /dev/tty`, and `sudo` fell back to the host's leaked `ksshaskpass`. Removing the patch (letting stock `distrobox-enter` pass `--pty`) restored all three. Rootless/no-init `dev` never takes the su path, which is why it was unaffected, and entering the same box via `ssh` or `podman exec -it` always worked (both give a real pty). **The patch must stay removed on every host (Bazzite, Aurora, …).** If a rootful box ever again kills the shell on Ctrl+C or breaks Ctrl+R/sudo, first check whether this obsolete `--pty` patch got re-applied — removing it is the fix. Only re-introduce a `--pty` workaround if upstream #2011 actually regresses.
 
 ## PUBLIC REPOSITORY -- READ THIS FIRST
 
