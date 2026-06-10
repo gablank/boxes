@@ -22,7 +22,15 @@ Beyond keeping docs in sync, agents must **proactively** improve this repository
 - After completing any task, look for automation opportunities: a missing `bin/box` command, a useful CI job, a script that belongs in `local-bin/`. Mention these to the user explicitly.
 - If you performed a manual multi-step process, suggest how to automate it.
 
-This is enforced by `.cursor/rules/self-improve.mdc`.
+This is enforced by `.agents/rules/self-improve.mdc`.
+
+## Agent File Layout
+
+`.agents/` is the canonical home for agent files: `.agents/rules/*.mdc` (always-active rules) and `.agents/skills/*/SKILL.md` (topic skills). `.cursor/rules` and `.cursor/skills` are **symlinks** into `.agents/` so Cursor picks them up — never create real files under `.cursor/`, and edit only the `.agents/` side. `CLAUDE.md` imports `AGENTS.md` for the same reason. Because not every harness auto-loads the skills, `AGENTS.md` intentionally duplicates their key points in summary form — when either side changes, sync the other (see the audit table in `.agents/rules/core.mdc`).
+
+## Development Environment
+
+Work on this repo usually happens **inside the dev box**, where `distrobox` and host `podman` are not available. From there you can edit, run `shellcheck`, compile box.tomls, and mirror every CI lint check — but `box assemble`/`pull`/`enter`/`list` and anything else touching containers must be run by the user on the host. If those commands fail inside a box, that is the environment, not a code bug.
 
 ## Workarounds & Known Gotchas
 
@@ -69,6 +77,10 @@ bin/
 setup.sh                    One-shot setup script for new users / forks
 .github/workflows/
   build.yml                 Nightly + on-push CI build and image cleanup
+.agents/
+  rules/                    Always-active agent rules (core.mdc, self-improve.mdc)
+  skills/                   Topic skills, one SKILL.md per topic
+.cursor/                    rules + skills symlinks into .agents/ (for Cursor)
 ```
 
 ## Image Build Flow

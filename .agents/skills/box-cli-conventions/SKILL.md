@@ -27,7 +27,7 @@ Each command has exactly one responsibility:
 
 ## Image tag management
 
-- The `image = ` line in `box.toml` is managed by `set-image` and `init`; manual edits to `box.toml` are fine (re-run `box assemble` to regenerate the ini), but never hand-edit `distrobox.ini`
+- The `image = ` line in `box.toml` is managed by `set-image`, `upgrade`, `init`, and `build` (which pins the freshly built `local-` tag); manual edits to `box.toml` are fine (re-run `box assemble` to regenerate the ini), but never hand-edit `distrobox.ini`
 - Old `YYYY-MM-DD` tags are still supported by `time_ago()` alongside the current `YYYY-MM-DDTHHMM` format
 - `images` uses `_image_markers()` (private helper, prefixed `_`) to annotate tags; it reads the tag from `box.toml`
 
