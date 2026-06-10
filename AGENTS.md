@@ -134,8 +134,10 @@ The completion heredocs **interpolate** the command lists from the arrays at run
 **Box names** are always discovered dynamically via `box --list-boxes` at completion time — no manual sync needed when adding a new box.
 
 **CI enforcement:** The `lint` job in `.github/workflows/build.yml` runs on every push and verifies:
+- Every `*/box.toml` compiles cleanly with `scripts/compile-box-toml.py`
 - `box completions bash` and `box completions zsh` both exit 0 and contain every entry in `_BOX_COMMANDS`
 - Every command extracted from the `case` dispatch block exists in `_BOX_COMMANDS`
+- Every `box <cmd>` invocation documented in `README.md`, `AGENTS.md`, the skills, and `setup.sh` exists in `_BOX_COMMANDS` (catches stale command names in docs)
 - `shellcheck --severity=error` passes on `bin/box`, `scripts/*.sh`, and `setup.sh`
 
 ## Local checks
@@ -143,6 +145,11 @@ The completion heredocs **interpolate** the command lists from the arrays at run
 There is no test suite; the CI `lint` job is the only gate. Mirror it locally before pushing. The `dev` box ships `shellcheck` (added in `dev/Containerfile`) so the static-analysis step below runs out of the box:
 
 ```bash
+# Every box.toml must compile cleanly.
+for d in */; do
+  if [ -f "$d/box.toml" ]; then python3 scripts/compile-box-toml.py "$d" || exit 1; fi
+done
+
 # Every _BOX_COMMANDS entry must appear in both completion outputs.
 # Run under bash — `mapfile` is bash-only.
 bash -c '

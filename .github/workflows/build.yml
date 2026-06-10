@@ -10,11 +10,32 @@ on:
 env:
   REGISTRY: ghcr.io
 
+# Serialize runs: a push racing the nightly build must not interleave
+# pushes of the latest/date tags across the two runs.
+concurrency:
+  group: build-images
+  cancel-in-progress: false
+
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Compile all box.toml files
+        run: |
+          compiled=0
+          for d in */; do
+            if [[ -f "$d/box.toml" ]]; then
+              python3 scripts/compile-box-toml.py "$d"
+              compiled=$((compiled + 1))
+            fi
+          done
+          if [[ $compiled -eq 0 ]]; then
+            echo "ERROR: no box.toml files found"
+            exit 1
+          fi
+          echo "OK: compiled $compiled box.toml file(s)"
 
       - name: Smoke-test completions output
         run: |
@@ -78,6 +99,39 @@ jobs:
           fi
 
           printf "OK: all dispatched commands present in _BOX_COMMANDS\n"
+
+      - name: Verify documented box commands exist
+        run: |
+          # Catch doc drift: every `box <cmd>` invocation shown in the docs
+          # (inline code and fenced blocks in markdown, quoted strings in
+          # setup.sh) must be a real command in _BOX_COMMANDS. Only matches
+          # where "box" sits at a command position (line start, after a
+          # backtick, &&, ;, | or open paren) are considered, so prose like
+          # "the box itself" is ignored.
+          mapfile -t declared < <(
+            grep -oP "(?<=_BOX_COMMANDS=\()[^)]*" bin/box \
+              | tr ' ' '\n' | tr -d '()' | grep -v '^$'
+          )
+          mapfile -t refs < <(
+            {
+              grep -ohP '`[^`]*`' README.md AGENTS.md .agents/skills/*/SKILL.md || true
+              awk '/^```/ { in_block = !in_block; next } in_block' README.md AGENTS.md .agents/skills/*/SKILL.md
+              grep -oh '"[^"]*"' setup.sh || true
+            } | grep -oP '(?:^|[`;|(]|&&)\s*box +\K[a-z][a-z-]*(?![[:alnum:]_/.-])' | sort -u
+          )
+          missing=()
+          for ref in "${refs[@]}"; do
+            found=false
+            for d in "${declared[@]}"; do
+              [[ "$d" == "$ref" ]] && found=true && break
+            done
+            $found || missing+=("$ref")
+          done
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            printf "ERROR: docs reference unknown box commands: %s\n" "${missing[*]}"
+            exit 1
+          fi
+          printf "OK: all %d documented box commands exist\n" "${#refs[@]}"
 
       - name: Shellcheck
         run: |
@@ -200,7 +254,7 @@ jobs:
           build-args: |
             BUILD_DATE=${{ needs.changes.outputs.date_tag }}
             BUILD_SHA=${{ github.sha }}
-            BASE_IMAGE=${{ env.REGISTRY }}/${{ github.repository_owner }}/box-base:latest
+            BASE_IMAGE=${{ env.REGISTRY }}/${{ github.repository_owner }}/box-base:${{ needs.changes.outputs.build_base == 'true' && needs.changes.outputs.date_tag || 'latest' }}
           cache-from: type=gha,scope=${{ matrix.box }}
           cache-to: type=gha,mode=max,scope=${{ matrix.box }}
 
