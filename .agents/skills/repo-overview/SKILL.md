@@ -33,4 +33,4 @@ This repo defines distrobox container environments built via CI and managed loca
 1. CI builds `box-base` from `Containerfile.base`
 2. CI builds `box-priv`, `box-work`, and `box-dev` from their respective Containerfiles (FROM box-base)
 3. All images are tagged `latest` + `YYYY-MM-DDTHHMM` (UTC) and pushed to ghcr.io
-4. Locally, `box pull <name> && box assemble <name>` pulls latest and recreates the container
+4. Locally, `box upgrade <name>` pulls latest and recreates the container

@@ -77,7 +77,7 @@ setup.sh                    One-shot setup script for new users / forks
 2. `build-base` runs only if `Containerfile.base`, `scripts/`, or `local-bin/` changed
 3. `build-priv`, `build-work`, and `build-dev` each run only if base changed OR their own directory changed; they run in parallel after `build-base`
 4. All images are tagged `latest` + `YYYY-MM-DDTHHMM` (e.g. `2026-03-04T0300`, UTC) and pushed to ghcr.io
-5. Locally, `box pull <name> && box assemble <name>` pulls the latest image and recreates the container
+5. Locally, `box upgrade <name>` pulls the latest image and recreates the container
 
 `<repo-owner>` is derived from `github.repository_owner` in CI — no hardcoding, so forks work out of the box.
 
@@ -109,9 +109,11 @@ Add it to the extension install loop in `Containerfile.base`.
 - `box assemble <box>` recompiles `box.toml` → `distrobox.ini` and runs `distrobox assemble create`; does not touch the image tag
 - `box assemble-all` assembles all boxes
 - `box pull <box> [tag]` pulls the image via `podman pull` without touching the container or ini; uses the tag currently in the ini if none specified
+- `box upgrade <box>` sets the tag to `latest`, pulls, and reassembles — the one-command upgrade path
+- `box build [--no-cache] <box>` builds base + box images locally; layer cache is used unless `--no-cache` is given
 - `box images <box>` lists available tags with a human-readable age column; marks the tag the container is built from with `← current` (green) and the tag the next `assemble` will use with `← next` (yellow)
 - Common workflows:
-  - Upgrade to latest: `box pull priv && box set-image priv && box assemble priv` (if already on `latest`, skip `set-image`)
+  - Upgrade to latest: `box upgrade priv`
   - Rollback: `box set-image priv <tag> && box pull priv <tag> && box assemble priv`
   - Recreate without re-pulling: `box assemble priv`
 - To add a command: add `cmd_<name>()` function (use `_` for hyphens in function name), add the case in the dispatch block, update `usage()`, **and add the command name to `_BOX_COMMANDS`** (see Completions sync contract below)

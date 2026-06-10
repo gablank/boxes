@@ -57,7 +57,10 @@ box enter work
 box init        [owner]         Set image registry owner in all box.toml files (default: git remote)
 box list                        List all boxes with status and image tag
 box enter       <box>           Enter a box
+box rescue      <box>           Reassemble without init hooks and enter (stops the box)
 box set-image   <box> [tag]     Set the image tag in box.toml (default: latest)
+box build       <box>           Build container image locally (base + box); does not restart
+box upgrade     <box>           Set tag to latest, pull, and reassemble (stops the box)
 box assemble    <box>           Create/recreate box from current box.toml
 box assemble-all                Assemble all boxes
 box pull        <box> [tag]     Pull image without rebuilding (default: current tag in box.toml)
@@ -72,7 +75,7 @@ box completions <bash|zsh|install>  Print or install shell completions
 
 | Goal | Commands |
 |------|----------|
-| Upgrade to latest | `box pull priv && box set-image priv && box assemble priv` (skip `set-image` if already on `latest`) |
+| Upgrade to latest | `box upgrade priv` |
 | Rollback | `box set-image priv <tag> && box pull priv <tag> && box assemble priv` |
 | Recreate without re-pulling | `box assemble priv` |
 

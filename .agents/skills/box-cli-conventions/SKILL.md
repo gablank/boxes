@@ -21,6 +21,8 @@ Each command has exactly one responsibility:
 - `assemble <box>` — recompiles `box.toml` → `distrobox.ini` and runs `distrobox assemble create`; no image tag manipulation
 - `assemble-all` — calls `assemble` for each discovered box
 - `pull <box> [tag]` — `podman pull`; no toml change, no assemble
+- `upgrade <box>` — the one composite command: sets the tag to `latest`, then calls `pull` and `assemble`
+- `build [--no-cache] <box>` — local image build (base + box); uses the layer cache unless `--no-cache` is given
 - `images <box>` — lists registry tags; marks the tag the container is built from with `← current` (green), and the tag the next `assemble` will use with `← next` (yellow); `← current` uses `podman inspect` so it appears on stopped containers too
 
 ## Image tag management
@@ -33,7 +35,7 @@ Each command has exactly one responsibility:
 
 | Goal | Commands |
 |------|----------|
-| Upgrade to latest | `box pull priv && box set-image priv && box assemble priv` (skip `set-image` if already on `latest`) |
+| Upgrade to latest | `box upgrade priv` |
 | Rollback | `box set-image priv <tag> && box pull priv <tag> && box assemble priv` |
 | Recreate without re-pulling | `box assemble priv` |
 
