@@ -36,6 +36,10 @@ For each file you touched, run through the matching checklist below. If you can'
 | Adding/removing a box | Run the full `.agents/skills/adding-a-box/SKILL.md` checklist |
 | Adding a new top-level directory copied into images | Path filters in `build.yml`, `Containerfile.base` COPY, `AGENTS.md` Repository Structure, `.agents/skills/repo-overview/SKILL.md` |
 
+## Single home for duplicated content
+
+CLI workflow examples (upgrade / rollback / recreate) live in exactly three places: `README.md`, `AGENTS.md`, and `.agents/skills/box-cli-conventions/SKILL.md`. Never copy them into other skills or docs — link to the skill instead. The same principle applies generally: when you're about to paste the same table or list into a fourth place, stop and link.
+
 ## When you remove a workaround or feature
 
 Greppable cleanup: when a workaround, alias, env var, helper, or feature is removed, search the repo for **every** mention of it (`grep -rn <name>`) and delete the dead references. Stale instructions that point at code that no longer exists are worse than no docs.
