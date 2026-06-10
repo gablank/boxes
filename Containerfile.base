@@ -11,6 +11,13 @@ RUN sed -i '/^NoExtract.*usr\/share\/\(man\|info\)/d' /etc/pacman.conf && \
     pacman-key --populate archlinux && \
     pacman -Syu --noconfirm
 
+# The packages baked into archlinux:latest were extracted while the bootstrap
+# NoExtract filters were active, so their man/info pages are gone. Re-extract
+# every preinstalled package NOW, before any customization below — a blanket
+# reinstall later in the file would clobber file modifications made in earlier
+# layers (it once silently overwrote the tailscale wrapper).
+RUN pacman -Qqn | pacman -S --noconfirm --overwrite '*' -
+
 # Pacman packages, grouped by purpose (one group per line below):
 #   Build toolchain + core utils: base-devel glib2 git openssh sudo ...
 #   Node.js runtime + npm: explicit dep for sandbox-runtime (see npm install below)
@@ -188,21 +195,8 @@ RUN chmod +x /usr/local/bin/* 2>/dev/null || true
 RUN printf 'build_date=%s\nbuild_sha=%s\nimage=box-base\n' \
         "$BUILD_DATE" "$BUILD_SHA" > /etc/box-build-info
 
-# Force-reinstall every native package so any man/info pages that the base
-# image stripped post-bootstrap come back, then rebuild the mandb index.
-RUN pacman -Qqn | pacman -S --noconfirm --overwrite '*' - && \
-    mandb --quiet
-
-# The blanket reinstall above (for man pages) reinstalls the tailscale package,
-# which overwrites the /usr/bin/tailscale wrapper created earlier with the stock
-# binary (explicitly-named packages install despite IgnorePkg). Re-apply the
-# wrapper here, after the reinstall. tailscale.real is a non-package path and is
-# left untouched by the reinstall, so the wrapper's exec target is still valid.
-RUN printf '#!/bin/sh\nexec /usr/bin/tailscale.real --socket=/var/run/tailscale/box.sock "$@"\n' \
-        > /usr/bin/tailscale && \
-    chmod +x /usr/bin/tailscale
-
-RUN rm -rf /tmp/* && \
+RUN mandb --quiet && \
+    rm -rf /tmp/* && \
     rm -f /etc/sudoers.d/builduser && \
     userdel -r builduser 2>/dev/null || true && \
     pacman -Scc --noconfirm && \

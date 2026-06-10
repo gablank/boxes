@@ -8,6 +8,7 @@ description: Conventions for editing Containerfiles in this repo. Use when modif
 ## Base image (`Containerfile.base`)
 
 - Starts from `archlinux:latest`
+- The bootstrap-package reinstall (`pacman -Qqn | pacman -S --overwrite '*' -`, which restores man pages stripped by the bootstrap image) runs immediately after the first layer, **before any customization**. Never add a blanket package reinstall later in the file — it re-extracts package files over earlier layer modifications (this once silently overwrote the tailscale wrapper).
 - Installs shared packages used by ALL boxes (pacman and AUR)
 - Creates a temporary `builduser` for makepkg/yay, removes it at the end
 - Pre-installs Cursor extensions to `/opt/cursor-extensions/`
