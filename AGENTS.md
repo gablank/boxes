@@ -60,9 +60,10 @@ priv/
   box.toml                  Container definition — source of truth (distrobox.ini is generated, gitignored)
   local-bin/                Scripts/binaries installed only into privbox
 work/
-  Containerfile             Thin layer on base for workbox (adds kubectl, k9s, qemu, glab)
+  Containerfile             Thin layer on base for workbox (adds kubectl, k9s, qemu, glab, rootless podman)
   box.toml                  Container definition — source of truth
   local-bin/                Scripts/binaries installed only into workbox
+  systemd-user/             User units installed only into workbox (podman graceful shutdown)
 dev/
   Containerfile             Thin layer on base for devbox (no init, no root — for developing box itself)
   box.toml                  Container definition — source of truth

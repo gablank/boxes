@@ -25,6 +25,15 @@ RUN mkdir -p /etc/containers/containers.conf.d && \
     printf '[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\n' \
         > /etc/containers/containers.conf.d/10-box-rootless.conf
 
+# Stop inner podman containers cleanly when the box shuts down; otherwise
+# systemd SIGKILLs the user slice, conmon never records the exits, and the
+# containers reappear Dead/stuck after restart (see the unit file for detail).
+# Enabled via symlink because systemctl --global needs a running systemd.
+COPY work/systemd-user/podman-graceful-shutdown.service /etc/systemd/user/
+RUN mkdir -p /etc/systemd/user/default.target.wants && \
+    ln -s ../podman-graceful-shutdown.service \
+        /etc/systemd/user/default.target.wants/podman-graceful-shutdown.service
+
 COPY work/local-bin/ /usr/local/bin/
 RUN chmod +x /usr/local/bin/* 2>/dev/null || true
 

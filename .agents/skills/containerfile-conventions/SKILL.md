@@ -24,6 +24,13 @@ description: Conventions for editing Containerfiles in this repo. Use when modif
 - Overwrite `/etc/box-build-info` with the box-specific image name
 - Build context is the repo root (not the box subdirectory)
 
+## Workbox rootless podman (podman-in-podman)
+
+`work/Containerfile` carries two pieces of glue for the box-local rootless podman; keep both when touching it:
+
+- `containers.conf.d/10-box-rootless.conf` — `cgroup_manager = "cgroupfs"` and `events_logger = "file"`, because the user systemd manager inside distrobox has no cgroup delegation and no user journal.
+- `work/systemd-user/podman-graceful-shutdown.service` (COPY'd to `/etc/systemd/user/` and enabled via a `default.target.wants` symlink, since `systemctl --global enable` needs a running systemd) — runs `podman stop --all` from `ExecStop` so inner containers exit cleanly when the box stops. Without it, box shutdown SIGKILLs conmon before exits are recorded and containers reappear Dead/stuck after restart. Inner podman's RunRoot (`/run/user/UID/containers`) is on the box's own `/run` tmpfs (init boxes get a fresh `/run`; distrobox only binds the host's `/run/user/UID` into init=0 boxes), so reboot detection itself works — unclean shutdown was the problem.
+
 ## Adding a new package
 
 - All boxes: add to `Containerfile.base` (pacman: `pacman -S --noconfirm --needed <pkg>`, AUR: `yay -S --noconfirm --needed <pkg>` as builduser)

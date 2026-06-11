@@ -161,6 +161,7 @@ work/
   Containerfile         Thin layer on base for workbox
   box.toml              Container definition (source of truth)
   local-bin/            Scripts installed only into workbox
+  systemd-user/         User units installed only into workbox
 dev/
   Containerfile         Thin layer on base for devbox (no init, no root)
   box.toml              Container definition (source of truth)

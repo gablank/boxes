@@ -1,0 +1,24 @@
+# Without this, stopping the box SIGKILLs the user slice and conmon dies
+# before recording container exits — podman's persistent state (in the box
+# home) is then left describing containers as live, and they come back
+# Dead/stuck after the box restarts. ExecStop runs while the user manager is
+# still up, so containers exit cleanly and conmon writes their exit files.
+#
+# After=podman.service orders this unit's stop BEFORE podman.service stops,
+# covering containers spawned via the podman API socket (docker/compose).
+# Containers started directly from an interactive shell live in the logind
+# session scope and can still race shutdown — rare in practice.
+
+[Unit]
+Description=Stop podman containers cleanly on box shutdown
+After=podman.service podman.socket
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/true
+ExecStop=-/usr/bin/podman stop --all --time 3
+TimeoutStopSec=8
+
+[Install]
+WantedBy=default.target
