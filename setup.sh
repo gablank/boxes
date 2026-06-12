@@ -50,7 +50,7 @@ if ! echo ":${PATH}:" | grep -q ":${REPO_BIN}:"; then
 fi
 printf "\n"
 
-# Set image registry owner in all distrobox.ini files based on git remote
+# Set image registry owner in all box.toml files based on git remote
 printf "${CYAN}Configuring image registry...${RESET}\n"
 "$BOX_BIN" init
 printf "\n"

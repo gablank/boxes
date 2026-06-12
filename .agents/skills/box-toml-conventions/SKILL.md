@@ -32,7 +32,7 @@ Each entry has `host`, `container`, and optional `options` (e.g. `"rw,z"`). The 
 
 ## Init script execution contexts
 
-`init_hooks` runs three scripts in sequence. Each runs in a different context — putting code in the wrong script will fail silently or crash the assemble.
+The base image ships three init scripts. `init_hooks` chains the first two (`init-root.sh`, then `init-user.sh` via `su -`); `shell-init.sh` is sourced from `.zshrc` instead. Each runs in a different context — putting code in the wrong script will fail silently or crash the assemble.
 
 | Script | Runs as | TTY | When | Use for |
 |--------|---------|-----|------|---------|

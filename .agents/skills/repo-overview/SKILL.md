@@ -11,7 +11,7 @@ This repo defines distrobox container environments built via CI and managed loca
 
 - `Containerfile.base` - shared base image (Arch Linux + pacman + yay + AUR packages + Cursor extensions)
 - `priv/Containerfile`, `work/Containerfile`, `dev/Containerfile` - thin layers adding box-specific packages
-- Images are built nightly by GitHub Actions and pushed to `ghcr.io/<repo-owner>/box-*` (derived from `github.repository_owner`, so forks build to their own registry)
+- Images are built by GitHub Actions on every push to `main` and nightly, and pushed to `ghcr.io/<repo-owner>/box-*` (derived from `github.repository_owner`, so forks build to their own registry)
 - `box.toml` files (one per box) are the source of truth; `scripts/compile-box-toml.py` compiles them to `distrobox.ini` (gitignored). `distrobox assemble` then pulls and creates the container.
 - `scripts/init-root.sh`, `init-user.sh`, and `shell-init.sh` are the three baked-in init scripts (root first-start, user first-start, every-shell-open, respectively)
 - `bin/box` is the CLI management tool (assemble, enter, set-image, pull, images, etc.)
@@ -21,7 +21,7 @@ This repo defines distrobox container environments built via CI and managed loca
 | Path | Purpose |
 |------|---------|
 | `Containerfile.base` | Shared base image definition |
-| `priv/`, `work/`, `dev/` | Per-box Containerfile, box.toml, and local-bin/ |
+| `priv/`, `work/`, `dev/` | Per-box Containerfile, box.toml, and box-specific extras (`local-bin/`; work also has `systemd-user/`) |
 | `local-bin/` | Custom scripts/binaries installed into ALL boxes |
 | `{box}/local-bin/` | Custom scripts/binaries installed into that specific box |
 | `scripts/` | Runtime init scripts baked into the base image |

@@ -2,7 +2,7 @@
 
 Distrobox container environments built via GitHub Actions CI and managed locally with the `box` CLI.
 
-Each box is an [Arch Linux](https://archlinux.org/) container with a full development toolchain — zsh, Cursor, VS Code, Docker, Python tooling, and more — shared home directory with the host, and Podman socket passthrough so Docker tooling works inside the box.
+Each box is an [Arch Linux](https://archlinux.org/) container with a full development toolchain — zsh, Cursor, VS Code, Docker, Python tooling, and more — with its own persistent home directory (`~/distrobox/<box>/home`). Docker tooling works inside the boxes: `priv` passes through the host podman socket, `work` runs its own rootless podman.
 
 ## Boxes
 
@@ -59,14 +59,14 @@ box list                        List all boxes with status and image tag
 box enter       <box>           Enter a box
 box rescue      <box>           Reassemble without init hooks and enter (stops the box)
 box set-image   <box> [tag]     Set the image tag in box.toml (default: latest)
-box build       <box>           Build container image locally (base + box); does not restart
+box build       [--no-cache] <box>  Build container image locally (base + box); does not restart
 box upgrade     <box>           Set tag to latest, pull, and reassemble (stops the box)
-box assemble    <box>           Create/recreate box from current box.toml
-box assemble-all                Assemble all boxes
+box assemble    [-v] <box>      Create/recreate box from current box.toml (stops the box)
+box assemble-all                Assemble all boxes (stops all boxes)
 box pull        <box> [tag]     Pull image without rebuilding (default: current tag in box.toml)
 box stop        <box>           Stop a box
 box status      <box>           Show detailed box info and build metadata
-box logs        <box>           Show init log
+box logs        <box> [...]     Show container logs (pass-through to podman logs)
 box images      <box>           List available image versions on ghcr.io
 box completions <bash|zsh|install>  Print or install shell completions
 ```
@@ -136,7 +136,7 @@ do \
 
 ### Add a new box
 
-See [AGENTS.md](AGENTS.md) — the "Adding a New Box" section has step-by-step instructions.
+See [AGENTS.md](AGENTS.md) — the "Adding or Removing a Box" section points at the step-by-step checklist in `.agents/skills/adding-a-box/SKILL.md`.
 
 ## Image Build
 
