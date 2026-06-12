@@ -7,4 +7,5 @@ pull = true
 start_now = true
 exported_apps = "ghostty"
 pre_init_hooks = "export SHELL=/usr/bin/zsh"
+init_hooks = 'bash /usr/local/share/box-init/init-root.sh ${container_user_name} && su - ${container_user_name} -c "bash /usr/local/share/box-init/init-user.sh"'
 additional_flags = "--security-opt seccomp=unconfined"
