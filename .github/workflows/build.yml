@@ -164,6 +164,7 @@ jobs:
               - 'Containerfile.base'
               - 'scripts/**'
               - 'local-bin/**'
+              - 'aur/**'
             priv:
               - 'priv/**'
             work:
