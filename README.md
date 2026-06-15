@@ -68,6 +68,7 @@ box stop        <box>           Stop a box
 box status      <box>           Show detailed box info and build metadata
 box logs        <box> [...]     Show container logs (pass-through to podman logs)
 box images      <box>           List available image versions on ghcr.io
+box vendor-aur  <pkgbase>...     Re-vendor AUR PKGBUILDs and show a diff to vet (--all for every one)
 box completions <bash|zsh|install>  Print or install shell completions
 ```
 
@@ -113,10 +114,20 @@ box init <github-username>      # or specify explicitly
 
 ### Add a package to all boxes
 
-Edit `Containerfile.base` and add the package to the `pacman -S` block (official packages) or the `yay -S` block (AUR packages):
+For an **official** package, edit `Containerfile.base` and add it to the `pacman -S` block:
 
 ```dockerfile
 RUN pacman -S --noconfirm --needed <package>
+```
+
+For an **AUR** package, the build never fetches from the AUR — it builds only from
+vetted PKGBUILDs vendored under `aur/` (a supply-chain control; see `aur/README.md`).
+Vendor and review the new package, then add a `makepkg` step to the AUR section of
+`Containerfile.base`:
+
+```bash
+box vendor-aur <pkgbase>   # clones from the AUR, prints a diff to vet
+# review the diff, then: git add aur/ && git commit
 ```
 
 ### Add a package to one box

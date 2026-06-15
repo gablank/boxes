@@ -7,7 +7,7 @@ description: Conventions for the bin/box CLI tool. Use when modifying bin/box, a
 
 ## Design principles
 
-- Pure bash, no external dependencies beyond `distrobox`, `curl`, Python 3.11+ (for the box.toml compiler), and standard coreutils; no `gh` CLI required
+- Pure bash, no external dependencies beyond `distrobox`, `curl`, `git` (for `vendor-aur`), Python 3.11+ (for the box.toml compiler), and standard coreutils; no `gh` CLI required
 - Resolves repo root from its own location so it works from any working directory
 - Auto-discovers boxes by scanning for `*/box.toml` in the repo root
 - The box argument is always the directory name (`priv`, `work`), not the container name (`privbox`, `workbox`)
@@ -24,6 +24,7 @@ Each command has exactly one responsibility:
 - `upgrade <box>` — the one composite command: sets the tag to `latest`, then calls `pull` and `assemble`
 - `build [--no-cache] <box>` — local image build (base + box); uses the layer cache unless `--no-cache` is given
 - `images <box>` — lists registry tags; marks the tag the container is built from with `← current` (green), and the tag the next `assemble` will use with `← next` (yellow); `← current` uses `podman inspect` so it appears on stopped containers too
+- `vendor-aur <pkgbase>... | --all` — re-vendors AUR PKGBUILDs into `aur/` and prints a diff to vet (thin wrapper over `scripts/vendor-aur.sh`); takes a pkgbase, **not** a box, so it is not in `_BOX_COMMANDS_WITH_BOX`
 
 ## Image tag management
 

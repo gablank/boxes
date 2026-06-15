@@ -54,7 +54,10 @@ If something needs a secret at runtime, use environment variables. Document the 
 This repo defines distrobox container environments built via CI and managed locally with `bin/box`.
 
 ```
-Containerfile.base          Shared base image (Arch Linux + pacman + yay + AUR + Cursor extensions)
+Containerfile.base          Shared base image (Arch Linux + pacman + vendored AUR builds + Cursor extensions)
+aur/                        Vetted AUR PKGBUILDs vendored per pkgbase; images build only from these (see aur/README.md)
+  manifest.tsv              pkgbase → upstream git commit + fetch date (provenance)
+  <pkgbase>/                PKGBUILD + local source files (*.install, *.sh, *.patch)
 priv/
   Containerfile             Thin layer on base for privbox
   box.toml                  Container definition — source of truth (distrobox.ini is generated, gitignored)
@@ -73,6 +76,7 @@ scripts/
   init-user.sh              First-start user init (~/.ssh, .zshrc, rustup) — no TTY, no sudo
   shell-init.sh             Sourced from .zshrc on every shell open — runtime env, services
   compile-box-toml.py       Compiles box.toml → distrobox.ini (Python 3.11+, stdlib tomllib)
+  vendor-aur.sh             Re-vendor AUR PKGBUILDs into aur/ with a diff to vet (box vendor-aur)
 bin/
   box                       Host-side CLI for managing boxes
 setup.sh                    One-shot setup script for new users / forks
@@ -96,7 +100,8 @@ setup.sh                    One-shot setup script for new users / forks
 
 ## Containerfile Conventions
 
-- `Containerfile.base` installs everything shared: pacman packages, yay, AUR packages, Cursor extensions, system fixes, the three `scripts/` init scripts (init-root.sh, init-user.sh, shell-init.sh), and `local-bin/`
+- `Containerfile.base` installs everything shared: pacman packages, AUR packages built from the vetted PKGBUILDs vendored in `aur/` (including `yay` itself, so it ships for interactive use), Cursor extensions, system fixes, the three `scripts/` init scripts (init-root.sh, init-user.sh, shell-init.sh), and `local-bin/`
+- **AUR builds are locked to vendored PKGBUILDs** — the build runs `makepkg` against `aur/<pkgbase>/`, never `yay -S`/`git clone` from the AUR. This is a supply-chain control (the AUR is regularly hit by account-takeover attacks); a malicious upstream PKGBUILD change cannot reach an image until reviewed in a PR. `makepkg` still downloads each upstream artifact, but only from the official URL in the vetted PKGBUILD, gated by its committed checksums. See `aur/README.md`.
 - Box-specific Containerfiles (`priv/Containerfile`, `work/Containerfile`, `dev/Containerfile`) declare `ARG BASE_IMAGE=ghcr.io/gablank/box-base:latest` followed by `FROM ${BASE_IMAGE}`. CI overrides `BASE_IMAGE` to point to the fork owner's registry.
 - Build context is always the repo root
 - Both base and box Containerfiles accept `BUILD_DATE` and `BUILD_SHA` build args, written to `/etc/box-build-info`
@@ -104,8 +109,9 @@ setup.sh                    One-shot setup script for new users / forks
 
 ### Adding a package
 
-- Needed by all boxes: add to `Containerfile.base` (pacman: `pacman -S --noconfirm --needed <pkg>`, AUR: `yay -S --noconfirm --needed <pkg>` as builduser)
-- Needed by one box: add to that box's Containerfile
+- Official, needed by all boxes: add to `Containerfile.base` `pacman -S --noconfirm --needed <pkg>`
+- AUR, needed by all boxes: **never** add a `yay -S` line. Vendor and vet the PKGBUILD first (`box vendor-aur <pkgbase>`, review the diff, commit `aur/`), then add a `makepkg` build step to the AUR section of `Containerfile.base`. Split pkgbases follow the `google-cloud-cli` pattern (build once, `pacman -U` only the wanted outputs). See `aur/README.md`.
+- Needed by one box: add to that box's Containerfile (official deps only; AUR follows the vendored flow above)
 
 ### Adding a Cursor extension
 
@@ -125,6 +131,7 @@ Add it to the extension install loop in `Containerfile.base`.
 - `box upgrade <box>` sets the tag to `latest`, pulls, and reassembles — the one-command upgrade path
 - `box build [--no-cache] <box>` builds base + box images locally; layer cache is used unless `--no-cache` is given
 - `box images <box>` lists available tags with a human-readable age column; marks the tag the container is built from with `← current` (green) and the tag the next `assemble` will use with `← next` (yellow)
+- `box vendor-aur <pkgbase>... | --all` re-clones AUR PKGBUILDs into `aur/`, prints a diff against the committed copy to vet, and updates `aur/manifest.tsv`; wraps `scripts/vendor-aur.sh`. Use it to bump a stale vendored `-bin`/`-git` package (review the diff, then commit `aur/`)
 - Common workflows:
   - Upgrade to latest: `box upgrade priv`
   - Rollback: `box set-image priv <tag> && box pull priv <tag> && box assemble priv`

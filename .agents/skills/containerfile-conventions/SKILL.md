@@ -9,8 +9,8 @@ description: Conventions for editing Containerfiles in this repo. Use when modif
 
 - Starts from `archlinux:latest`
 - The bootstrap-package reinstall (`pacman -Qqn | pacman -S --overwrite '*' -`, which restores man pages stripped by the bootstrap image) runs immediately after the first layer, **before any customization**. Never add a blanket package reinstall later in the file — it re-extracts package files over earlier layer modifications (this once silently overwrote the tailscale wrapper).
-- Installs shared packages used by ALL boxes (pacman and AUR)
-- Creates a temporary `builduser` for makepkg/yay, removes it at the end
+- Installs shared packages used by ALL boxes: pacman packages, plus AUR packages built with `makepkg` from the vetted PKGBUILDs vendored in `aur/` (never `yay -S`/`git clone` from the AUR — supply-chain control; see `aur/README.md`). `yay` itself is vendored and built here so it still ships for interactive use.
+- Creates a temporary `builduser` for makepkg, removes it at the end
 - Pre-installs Cursor extensions to `/opt/cursor-extensions/`
 - COPYs `scripts/init-user.sh` and `local-bin/` into the image
 - Writes `/etc/box-build-info` using `BUILD_DATE` and `BUILD_SHA` build args
@@ -33,8 +33,9 @@ description: Conventions for editing Containerfiles in this repo. Use when modif
 
 ## Adding a new package
 
-- All boxes: add to `Containerfile.base` (pacman: `pacman -S --noconfirm --needed <pkg>`, AUR: `yay -S --noconfirm --needed <pkg>` as builduser)
-- One box: add to that box's Containerfile
+- All boxes, official: add to `Containerfile.base` `pacman -S --noconfirm --needed <pkg>`
+- All boxes, AUR: **never** add a `yay -S` line. Vendor + vet the PKGBUILD first (`box vendor-aur <pkgbase>`, review the diff, commit `aur/`), then add a `makepkg` build step to the AUR section of `Containerfile.base`. Split pkgbases follow the `google-cloud-cli` pattern (build once, `pacman -U` only the wanted outputs). See `aur/README.md`.
+- One box: add to that box's Containerfile (official deps only; AUR uses the vendored flow above)
 
 ## Adding a new Cursor extension
 
