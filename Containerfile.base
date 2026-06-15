@@ -68,29 +68,40 @@ RUN ln -sf /usr/bin/xtables-nft-multi /usr/bin/iptables && \
 RUN useradd -m -G wheel builduser && \
     printf 'builduser ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/builduser
 
-USER builduser
-WORKDIR /tmp/yay-build
-RUN git clone https://aur.archlinux.org/yay.git . && \
-    makepkg -s --noconfirm --needed && \
-    sudo pacman -U --noconfirm ./*.pkg.tar*
+# AUR packages are built from vetted PKGBUILDs vendored in aur/ — the build never
+# fetches PKGBUILDs from the AUR (supply-chain control; see aur/README.md).
+# makepkg still downloads each upstream artifact, but only from the official URL
+# in the vetted PKGBUILD, gated by its committed checksums. Refresh/bump with
+# `box vendor-aur <pkgbase>`.
+COPY --chown=builduser:builduser aur/ /tmp/aur/
 
-# AUR packages, grouped by purpose:
+USER builduser
+
+# yay first: it is built here so it still ships in the images for interactive
+# `yay -S` after pulling. Only the image build is locked to vendored copies.
+RUN cd /tmp/aur/yay && makepkg -si --noconfirm --needed
+
+# Single-package pkgbases — build and install every package each produces:
 #   IDEs / editors: visual-studio-code-bin, cursor-bin
 #   Zsh framework: oh-my-zsh-git
 #   Browser (exported via distrobox): google-chrome (desktop file patched later by chrome-wrapper)
 #   Database CLI tools (mongodump, mongorestore, etc.): mongodb-tools
-#   GCP CLI + GKE auth plugin for kubectl: google-cloud-cli, gke-gcloud-auth-plugin
-#   AI coding assistant (Node.js CLI): claude-code
-RUN yay -S --noconfirm --needed \
-    visual-studio-code-bin cursor-bin \
-    oh-my-zsh-git \
-    google-chrome \
-    mongodb-tools \
-    google-cloud-cli google-cloud-cli-component-gke-gcloud-auth-plugin \
-    claude-code
+#   AI coding assistant (self-contained Bun binary): claude-code
+RUN for b in visual-studio-code-bin cursor-bin oh-my-zsh-git google-chrome mongodb-tools claude-code; do \
+      ( cd "/tmp/aur/$b" && makepkg -si --noconfirm --needed ) || exit 1; \
+    done
+
+# google-cloud-cli is a split pkgbase: build once, install only gcloud core + the
+# GKE auth plugin for kubectl (not bq/gsutil/bundled-python).
+RUN cd /tmp/aur/google-cloud-cli && \
+    makepkg -s --noconfirm --needed && \
+    sudo pacman -U --noconfirm \
+      google-cloud-cli-[0-9]*.pkg.tar* \
+      google-cloud-cli-component-gke-gcloud-auth-plugin-*.pkg.tar*
 
 USER root
 WORKDIR /
+RUN rm -rf /tmp/aur
 
 # vi -> vim symlink (vi-vim-symlink AUR package no longer exists)
 RUN ln -sf /usr/bin/vim /usr/bin/vi

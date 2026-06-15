@@ -1,0 +1,10 @@
+# makepkg build artifacts — never commit these. The vendored sources are
+# PKGBUILD, *.install, *.sh, *.patch and other small local source files only.
+*/pkg/
+*/src/
+*.pkg.tar*
+*.tar.gz
+*.tar.xz
+*.tar.zst
+*.AppImage
+*.deb

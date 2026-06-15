@@ -6,7 +6,7 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
 REGISTRY="ghcr.io"
 
-_BOX_COMMANDS=(init list enter rescue set-image build upgrade assemble assemble-all pull stop status logs images completions help)
+_BOX_COMMANDS=(init list enter rescue set-image build upgrade assemble assemble-all pull stop status logs images vendor-aur completions help)
 _BOX_COMMANDS_WITH_BOX=(enter rescue set-image build upgrade assemble pull stop status logs images)
 
 _detect_owner() {
@@ -72,6 +72,7 @@ ${BOLD}COMMANDS${RESET}
     status      <box>        Show detailed box info and build metadata
     logs        <box> [...]  Show container logs (pass-through to podman logs)
     images      <box>        List available image versions on ghcr.io
+    vendor-aur  <pkgbase>... Re-vendor AUR PKGBUILDs from the AUR and show a diff to vet (--all for every one)
     completions <shell>      Print or install shell completions (bash|zsh|install)
 
 ${BOLD}BOXES${RESET}
@@ -691,6 +692,7 @@ _box_commands() {
         'status:show detailed box info and build metadata'
         'logs:show init log'
         'images:list available image versions on ghcr.io'
+        'vendor-aur:re-vendor AUR PKGBUILDs and show a diff to vet'
         'completions:print or install shell completions'
         'help:show help'
     )
@@ -743,6 +745,10 @@ _completions_install() {
         exit 1
     fi
     printf "${YELLOW}Restart your shell (or source the rc file) to activate completions.${RESET}\n"
+}
+
+cmd_vendor_aur() {
+    exec "$REPO_ROOT/scripts/vendor-aur.sh" "$@"
 }
 
 cmd_completions() {
@@ -825,6 +831,10 @@ case "$command" in
     images)
         [[ $# -ge 1 ]] || { printf "${RED}Usage: box images <box>${RESET}\n" >&2; exit 1; }
         cmd_images "$1"
+        ;;
+    vendor-aur)
+        [[ $# -ge 1 ]] || { printf "${RED}Usage: box vendor-aur <pkgbase>... | --all${RESET}\n" >&2; exit 1; }
+        cmd_vendor_aur "$@"
         ;;
     help|--help|-h)
         usage
