@@ -38,7 +38,7 @@ RUN pacman -S --noconfirm --needed \
     nodejs npm \
     man-db man-pages \
     zsh tmux btop less ghostty \
-    jq tree ripgrep fd unzip zip \
+    jq tree ripgrep fd fzf unzip zip \
     nano vim \
     python uv mise usage \
     rustup \
