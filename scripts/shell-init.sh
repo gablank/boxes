@@ -5,6 +5,22 @@
 # All box runtime env and services live here.
 # Changes to this file take effect on next shell open (no box rebuild needed).
 
+# --- SSH/sudo askpass (drop leaked host askpass) ---
+# The host (KDE) exports SSH_ASKPASS/SUDO_ASKPASS pointing at a GUI helper
+# (/usr/bin/ksshaskpass) plus DISPLAY into the box. That helper is host-only and
+# does not exist here, so when ssh needs to prompt (e.g. confirming an unknown
+# host key) it tries to exec the missing askpass, fails, and aborts with
+# "Host key verification failed"; sudo -A hits the same wall.
+#
+# Rather than match a specific binary name, drop any askpass var whose target is
+# not an executable in this box — this stays correct no matter which host helper
+# leaks in. Falling back to the terminal prompt is what we want in a CLI box.
+[[ -n "${SSH_ASKPASS:-}"  && ! -x "${SSH_ASKPASS}"  ]] && unset SSH_ASKPASS
+[[ -n "${SUDO_ASKPASS:-}" && ! -x "${SUDO_ASKPASS}" ]] && unset SUDO_ASKPASS
+# SSH_ASKPASS_REQUIRE=force makes ssh use askpass even when a tty is present;
+# pointless once SSH_ASKPASS is gone, so clear it too.
+[[ -z "${SSH_ASKPASS:-}" ]] && unset SSH_ASKPASS_REQUIRE
+
 # --- Container runtime (docker CLI → podman) ---
 # Two modes:
 #   1. Host podman shared in: box.toml mounts the host's socket at /podman.sock
