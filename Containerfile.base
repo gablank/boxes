@@ -187,7 +187,35 @@ RUN mkdir -p /etc/systemd/system/tailscaled.service.d && \
         > /usr/bin/tailscale && \
     chmod +x /usr/bin/tailscale && \
     sed -i '/^\[options\]/a IgnorePkg = tailscale' /etc/pacman.conf && \
-    systemctl enable tailscaled.service && \
+    systemctl enable tailscaled.service
+
+# SSH host keys: stock sshd generates them into /etc/ssh on first start, which
+# lives in the container's writable layer. Every recreate (`box upgrade`,
+# `box assemble`, `box rescue` — all box.tomls set replace=true) therefore gave
+# the box a brand-new SSH identity, while its tailscale node name and IP stayed
+# put because /var/lib/tailscale is persisted. Same host, same address, new host
+# key is exactly what ssh reports as a possible MITM, so every upgrade tripped
+# "REMOTE HOST IDENTIFICATION HAS CHANGED" on every other box's known_hosts.
+#
+# Fix: keep the host keys in /var/lib/box-ssh, which boxes persist via a
+# [[mount-dir]], and point HostKey at them. Setting any HostKey disables the
+# /etc/ssh defaults, so the ephemeral keys sshdgenkeys.service still writes there
+# are simply never offered. The generator runs as ExecStartPre because the
+# mounted directory starts empty on a fresh host, and it re-applies mode 600
+# every start — sshd refuses to load a host key that is group/world readable and
+# exits with "no hostkeys available".
+#
+# Keys are generated at runtime, never baked into the image: this repo is
+# public, and a host key shipped in the image would let anyone impersonate the
+# box.
+RUN printf '#!/bin/sh\nset -eu\nd=/var/lib/box-ssh\nmkdir -p "$d"\nfor t in ed25519 rsa ecdsa; do\n    k="$d/ssh_host_${t}_key"\n    [ -f "$k" ] || ssh-keygen -q -t "$t" -N "" -C "" -f "$k"\n    chmod 600 "$k"\n    chmod 644 "$k.pub" 2>/dev/null || true\ndone\n' \
+        > /usr/local/sbin/box-sshd-keygen && \
+    chmod +x /usr/local/sbin/box-sshd-keygen && \
+    mkdir -p /var/lib/box-ssh /etc/systemd/system/sshd.service.d && \
+    printf 'HostKey /var/lib/box-ssh/ssh_host_ed25519_key\nHostKey /var/lib/box-ssh/ssh_host_rsa_key\nHostKey /var/lib/box-ssh/ssh_host_ecdsa_key\n' \
+        > /etc/ssh/sshd_config.d/10-box-host-keys.conf && \
+    printf '[Service]\nExecStartPre=/usr/local/sbin/box-sshd-keygen\n' \
+        > /etc/systemd/system/sshd.service.d/persistent-host-keys.conf && \
     systemctl enable sshd.service
 
 # Mask the user-session D-Bus so the container's systemd --user never starts its

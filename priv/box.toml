@@ -20,6 +20,14 @@ host = "${HOME}/distrobox/privbox/tailscale"
 container = "/var/lib/tailscale"
 options = "rw,z"
 
+# Persists sshd's host keys across recreates; without it every "box upgrade"
+# rotates the box's SSH identity and trips the host-key-changed warning on
+# every client that has it in known_hosts.
+[[mount-dir]]
+host = "${HOME}/distrobox/privbox/ssh-hostkeys"
+container = "/var/lib/box-ssh"
+options = "rw,z"
+
 # Files/sockets — must already exist, appended to additional_flags as --volume
 [[mount-file]]
 host = "${XDG_RUNTIME_DIR}/podman/podman.sock"

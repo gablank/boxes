@@ -20,6 +20,14 @@ host = "${HOME}/distrobox/workbox/tailscale"
 container = "/var/lib/tailscale"
 options = "rw,z"
 
+# Persists sshd's host keys across recreates; without it every "box upgrade"
+# rotates the box's SSH identity and trips the host-key-changed warning on
+# every client that has it in known_hosts.
+[[mount-dir]]
+host = "${HOME}/distrobox/workbox/ssh-hostkeys"
+container = "/var/lib/box-ssh"
+options = "rw,z"
+
 # Workbox runs its own rootless podman (see work/Containerfile) so containers
 # spawned via docker/compose live in workbox's netns. The host podman socket
 # is intentionally NOT mounted here; priv still uses it.
