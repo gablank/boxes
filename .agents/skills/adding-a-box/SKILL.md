@@ -25,6 +25,8 @@ Complete checklist for adding a new box (e.g., `dev`). Every step is required un
 
 - `dev/box.toml`: follow existing patterns from `priv/box.toml` or `work/box.toml`. This is the source of truth; `distrobox.ini` is generated from it.
 
+  If the box sets `init = true` it will run `sshd`, so it **must** include the `ssh-hostkeys` `[[mount-dir]]` — otherwise every `box upgrade` rotates its SSH host keys and clients report a host-key mismatch. See `.agents/skills/box-toml-conventions/SKILL.md` § "SSH host keys per box".
+
 - `dev/local-bin/.gitkeep` (only if the box needs box-specific scripts)
 
 ## 2. Update CI workflow

@@ -101,6 +101,7 @@ setup.sh                    One-shot setup script for new users / forks
 ## Containerfile Conventions
 
 - `Containerfile.base` installs everything shared: pacman packages, AUR packages built from the vetted PKGBUILDs vendored in `aur/` (including `yay` itself, so it ships for interactive use), Cursor extensions, system fixes, the three `scripts/` init scripts (init-root.sh, init-user.sh, shell-init.sh), and `local-bin/`
+- `Containerfile.base` also enables `sshd` and redirects its `HostKey` paths to `/var/lib/box-ssh` so host keys survive container recreates — see the "SSH host keys per box" bullet under box.toml Conventions for the mount each init box must pair with it
 - **AUR builds are locked to vendored PKGBUILDs** — the build runs `makepkg` against `aur/<pkgbase>/`, never `yay -S`/`git clone` from the AUR. This is a supply-chain control (the AUR is regularly hit by account-takeover attacks); a malicious upstream PKGBUILD change cannot reach an image until reviewed in a PR. `makepkg` still downloads each upstream artifact, but only from the official URL in the vetted PKGBUILD, gated by its committed checksums. See `aur/README.md`.
 - Box-specific Containerfiles (`priv/Containerfile`, `work/Containerfile`, `dev/Containerfile`) declare `ARG BASE_IMAGE=ghcr.io/gablank/box-base:latest` followed by `FROM ${BASE_IMAGE}`. CI overrides `BASE_IMAGE` to point to the fork owner's registry.
 - Build context is always the repo root
@@ -210,6 +211,14 @@ shellcheck --severity=error --shell=bash bin/box scripts/*.sh setup.sh
   - `--device /dev/net/tun --cap-add NET_ADMIN --cap-add NET_RAW` in `additional_flags`
   - **No init_hooks tweaks needed.** The base image ships a systemd drop-in that runs `tailscaled` with `--socket=/var/run/tailscale/box.sock` and a `/usr/bin/tailscale` wrapper that injects the same flag. This sidesteps the issue where distrobox-init symlinks the host's tailscale socket over the default path inside the container. See `Containerfile.base` for the wrapper definition; `IgnorePkg` keeps in-container `pacman -Syu` from overwriting it.
   - After first `box assemble <box>`, run `tailscale up` inside the box to authenticate
+- **SSH host keys per box**: any box with `init = true` runs `sshd`, and stock `sshd` keeps its host keys in `/etc/ssh` — the container's writable layer, wiped by every recreate. Because `replace = true` means `box upgrade`/`assemble`/`rescue` all recreate, and because tailscale state *is* persisted (so the box keeps its name and IP), the box would come back with a new SSH identity at the same address and every client would report `REMOTE HOST IDENTIFICATION HAS CHANGED`. The base image points `HostKey` at `/var/lib/box-ssh` instead, so **every init box needs**:
+  ```toml
+  [[mount-dir]]
+  host = "${HOME}/distrobox/<box>/ssh-hostkeys"
+  container = "/var/lib/box-ssh"
+  options = "rw,z"
+  ```
+  Nothing else — `/usr/local/sbin/box-sshd-keygen` runs from an `sshd.service` `ExecStartPre` drop-in and creates only missing keys, so the identity is stable from the first start onward. Keys are never baked into the image (public repo). Delete the host directory to deliberately rotate a box's SSH identity.
 - **Docker-compose + work tailnet**: to make compose services reachable from the work box *and* on the work tailnet, add `network_mode: "container:workbox"` to each service in the compose file. Services then share workbox's network namespace; use `localhost:PORT` to reach them from the box.
 - See `.agents/skills/box-toml-conventions/SKILL.md` for the full template and field reference
 

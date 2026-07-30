@@ -11,6 +11,7 @@ description: Conventions for editing Containerfiles in this repo. Use when modif
 - The bootstrap-package reinstall (`pacman -Qqn | pacman -S --overwrite '*' -`, which restores man pages stripped by the bootstrap image) runs immediately after the first layer, **before any customization**. Never add a blanket package reinstall later in the file — it re-extracts package files over earlier layer modifications (this once silently overwrote the tailscale wrapper).
 - Installs shared packages used by ALL boxes: pacman packages, plus AUR packages built with `makepkg` from the vetted PKGBUILDs vendored in `aur/` (never `yay -S`/`git clone` from the AUR — supply-chain control; see `aur/README.md`). `yay` itself is vendored and built here so it still ships for interactive use.
 - Creates a temporary `builduser` for makepkg, removes it at the end
+- Enables `sshd` and redirects its `HostKey` paths to `/var/lib/box-ssh` (drop-in + `box-sshd-keygen` `ExecStartPre`) so host keys outlive container recreates. Host keys are generated at runtime, never baked into the image — the repo is public. Init boxes must pair this with the `ssh-hostkeys` `[[mount-dir]]`; see `.agents/skills/box-toml-conventions/SKILL.md`.
 - Pre-installs Cursor extensions to `/opt/cursor-extensions/`
 - COPYs `scripts/init-user.sh` and `local-bin/` into the image
 - Writes `/etc/box-build-info` using `BUILD_DATE` and `BUILD_SHA` build args

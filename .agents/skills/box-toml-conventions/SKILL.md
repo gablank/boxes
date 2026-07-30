@@ -96,6 +96,29 @@ options = "rw,z"
 
 No init_hooks tweaks, no shell-init logic — the systemd unit and wrapper handle it. After first `box assemble <box>`, run `tailscale up` inside the box to authenticate; auth state persists in `~/distrobox/<box>/tailscale/`.
 
+## SSH host keys per box
+
+Any box with `init = true` runs `sshd`. Stock `sshd` generates its host keys into `/etc/ssh` on first start, which lives in the container's **writable layer** — so every recreate (`box upgrade`, `box assemble`, `box rescue`; all box.tomls set `replace = true`) issued the box a brand-new SSH identity. Combined with persisted tailscale state, which keeps the box's node name and IP stable, the result was a host that kept its address but changed its key on every upgrade — precisely what `ssh` reports as `REMOTE HOST IDENTIFICATION HAS CHANGED ... someone could be eavesdropping`.
+
+The base image solves this **at build time**, mirroring the tailscale approach:
+
+- `/etc/ssh/sshd_config.d/10-box-host-keys.conf` sets `HostKey` to three paths under `/var/lib/box-ssh`. Setting any `HostKey` disables the `/etc/ssh` defaults, so the ephemeral keys `sshdgenkeys.service` still writes there are never offered.
+- `/usr/local/sbin/box-sshd-keygen` generates only *missing* keys and re-applies mode `600` on every start. Both halves matter: the mounted directory is empty on a fresh host, and `sshd` refuses to load a group/world-readable host key, exiting with `no hostkeys available`.
+- It runs from an `ExecStartPre` in `/etc/systemd/system/sshd.service.d/persistent-host-keys.conf`.
+
+**Per-box `box.toml` only needs**:
+
+```toml
+[[mount-dir]]
+host = "${HOME}/distrobox/<box>/ssh-hostkeys"
+container = "/var/lib/box-ssh"
+options = "rw,z"
+```
+
+Keys are generated at runtime and never committed or baked into the image — this repo is public, and a shipped host key would let anyone impersonate the box. To deliberately rotate a box's SSH identity, delete `~/distrobox/<box>/ssh-hostkeys/` and restart the box; clients then need `ssh-keygen -R <host>`.
+
+Boxes with `init = false` (e.g. `dev`) never start `sshd` and need no mount.
+
 ### Docker-compose services on the box tailnet
 
 To make compose services share the box's network namespace (reachable via `localhost` and on the box's tailnet):

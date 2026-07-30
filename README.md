@@ -4,6 +4,8 @@ Distrobox container environments built via GitHub Actions CI and managed locally
 
 Each box is an [Arch Linux](https://archlinux.org/) container with a full development toolchain — zsh, Cursor, VS Code, Docker, Python tooling, and more — with its own persistent home directory (`~/distrobox/<box>/home`). Docker tooling works inside the boxes: `priv` passes through the host podman socket, `work` runs its own rootless podman.
 
+`priv` and `work` also run `sshd`, and their SSH host keys persist in `~/distrobox/<box>/ssh-hostkeys/` so upgrading a box doesn't make clients think its identity changed. Delete that directory and restart the box to rotate the keys deliberately.
+
 ## Boxes
 
 | Box | Purpose |
