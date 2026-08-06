@@ -35,6 +35,7 @@ For each file you touched, run through the matching checklist below. If you can'
 | `.github/workflows/build.yml` | `AGENTS.md` "Image Build Flow" + path-filter notes, `.agents/skills/adding-a-box/SKILL.md` CI section |
 | Adding/removing a box | Run the full `.agents/skills/adding-a-box/SKILL.md` checklist |
 | Adding a new top-level directory copied into images | Path filters in `build.yml`, `Containerfile.base` COPY, `AGENTS.md` Repository Structure, `.agents/skills/repo-overview/SKILL.md` |
+| `aur/` (any PKGBUILD or `manifest.tsv`) | Work the audit procedure in `aur/README.md` ("Auditing a `vendor-aur` bump") **before committing** — a bump is not reviewed until that checklist has been run; also `Containerfile.base` if a pkgbase was added/removed |
 
 ## Single home for duplicated content
 
