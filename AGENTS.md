@@ -132,7 +132,7 @@ Add it to the extension install loop in `Containerfile.base`.
 - `box upgrade <box>` sets the tag to `latest`, pulls, and reassembles — the one-command upgrade path
 - `box build [--no-cache] <box>` builds base + box images locally; layer cache is used unless `--no-cache` is given
 - `box images <box>` lists available tags with a human-readable age column; marks the tag the container is built from with `← current` (green) and the tag the next `assemble` will use with `← next` (yellow)
-- `box vendor-aur <pkgbase>... | --all` re-clones AUR PKGBUILDs into `aur/`, prints a diff against the committed copy to vet, and updates `aur/manifest.tsv`; wraps `scripts/vendor-aur.sh`. Use it to bump a stale vendored `-bin`/`-git` package (review the diff, then commit `aur/`)
+- `box vendor-aur <pkgbase>... | --all` re-clones AUR PKGBUILDs into `aur/`, prints a diff against the committed copy to vet, and updates `aur/manifest.tsv`; wraps `scripts/vendor-aur.sh`. Use it to bump a stale vendored `-bin`/`-git` package (review the diff, then commit `aur/`). **Vetting that diff is the whole point of vendoring** — follow the step-by-step audit procedure in `aur/README.md` ("Auditing a `vendor-aur` bump") rather than eyeballing it: a routine bump is nothing but version/checksum/manifest lines, and everything else needs justification
 - Common workflows:
   - Upgrade to latest: `box upgrade priv`
   - Rollback: `box set-image priv <tag> && box pull priv <tag> && box assemble priv`
