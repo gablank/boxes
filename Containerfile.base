@@ -153,6 +153,42 @@ RUN chmod u+s /usr/bin/newuidmap /usr/bin/newgidmap
 RUN printf '#!/bin/sh\nexec gio open "$@"\n' > /usr/local/bin/xdg-open && \
     chmod +x /usr/local/bin/xdg-open
 
+# host-spawn: runs commands back on the host. distrobox bind-mounts only its own
+# shell scripts (distrobox-export, distrobox-host-exec, distrobox-init) and no
+# host-spawn binary — the host has none to mount, since it isn't a distrobox
+# dependency on any distro. host-spawn has to live in the guest anyway: it runs
+# inside the container and calls back out over the session D-Bus socket.
+#
+# distrobox instead downloads it at container init, best-effort and silent —
+# distrobox-init runs `distrobox-host-exec -Y test 2>/dev/null >/dev/null || :`
+# (ungated: init boxes run it too). Nothing retries if it fails, and what it
+# writes goes to the container's writable layer, which every recreate
+# (replace=true) discards. Empirically it lands in dev but not in priv/work;
+# the untested suspect is egress at init time in their own netns
+# (unshare_netns=true for the per-box tailnets).
+#
+# The cost of it being missing: /etc/profile.d/distrobox_profile.sh calls
+# host-spawn on every login shell to import XAUTHORITY/XAUTHLOCALHOSTNAME/
+# WAYLAND_DISPLAY/DISPLAY from the host, so each shell opens with
+# "distrobox_profile.sh:20: command not found: host-spawn" and graphical apps
+# launched from a login session lose the host display variables.
+#
+# Not in the official repos and not in the AUR, so this is a version-pinned
+# download from the upstream release, checksum-gated: the same trust model as
+# the vendored PKGBUILDs (official vendor URL + committed checksum). Images are
+# x86_64 only, hence the hardcoded asset name — the sha256 pins that one file.
+# Installed as /usr/bin/host-spawn, exactly where distrobox installs it, so a
+# newer distrobox can overwrite it in place. The binary dispatches on its own
+# argv[0]: renaming it (or symlinking another name to it) makes it run *that*
+# command on the host instead, so it must keep the name host-spawn.
+# Bump when distrobox raises host_spawn_version in distrobox-host-exec.
+RUN host_spawn_version=v1.6.2 && \
+    host_spawn_sha256=077bc09a087292447ba17cfe2156a93f71bf56c4c6be8e38d3abe65c1240f34c && \
+    curl -sLfo /usr/bin/host-spawn \
+        "https://github.com/1player/host-spawn/releases/download/${host_spawn_version}/host-spawn-x86_64" && \
+    printf '%s  /usr/bin/host-spawn\n' "$host_spawn_sha256" | sha256sum -c - && \
+    chmod +x /usr/bin/host-spawn
+
 # Chrome wrapper: desktop-launched apps (distrobox-export) bypass shell init
 # and PAM, so DBUS_SESSION_BUS_ADDRESS from /etc/environment is never set.
 # This wrapper sources /etc/environment before exec'ing Chrome so screen

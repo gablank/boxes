@@ -6,6 +6,8 @@ Each box is an [Arch Linux](https://archlinux.org/) container with a full develo
 
 `priv` and `work` also run `sshd`, and their SSH host keys persist in `~/distrobox/<box>/ssh-hostkeys/` so upgrading a box doesn't make clients think its identity changed. Delete that directory and restart the box to rotate the keys deliberately.
 
+Every image ships [`host-spawn`](https://github.com/1player/host-spawn) at a pinned version. distrobox needs it to run commands back on the host (`distrobox-host-exec`) and to import the host's display variables in its login profile, but it ships no binary of its own — it offers to download one into the container instead, which every recreate throws away. Baking it in keeps `command not found: host-spawn` out of your login shells.
+
 ## Boxes
 
 | Box | Purpose |
