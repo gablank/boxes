@@ -300,6 +300,32 @@ RUN printf '#!/bin/sh\nset -eu\nd=/var/lib/box-ssh\nmkdir -p "$d"\nfor t in ed25
         > /etc/systemd/system/sshd.service.d/persistent-host-keys.conf && \
     systemctl enable sshd.service
 
+# Key-only SSH. This has to be a drop-in, not an edit to /etc/ssh/sshd_config:
+# that file lives in the container's writable layer, so a hand-edit is discarded
+# by the next recreate (replace=true everywhere) and the box silently returns to
+# accepting passwords.
+#
+# Passwords are a real exposure here rather than a theoretical one. The priv and
+# work init_hooks copy the user's password hash out of the host's /etc/shadow
+# into the container, so the box accepts the host login password — and both
+# boxes run sshd on a tailnet, which is a much wider audience than localhost.
+#
+# Both directives are needed. UsePAM yes means keyboard-interactive can reach
+# pam_unix and satisfy a login with the same password even when
+# PasswordAuthentication is no; upstream's own comment in sshd_config says to
+# set both. Arch already ships KbdInteractiveAuthentication no in its
+# 99-archlinux.conf, but relying on another package's file to hold half of this
+# is fragile, so it is restated here.
+#
+# The 10- prefix matters: /etc/ssh/sshd_config Includes sshd_config.d/*.conf on
+# its line 2 and sshd keeps the FIRST value it obtains for a keyword, so this
+# file wins over both the main config and any higher-numbered drop-in.
+#
+# No lockout risk: `box enter` uses podman exec and never touches sshd, so a box
+# stays reachable even with no authorized_keys at all.
+RUN printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\n' \
+        > /etc/ssh/sshd_config.d/10-box-auth.conf
+
 # Mask the user-session D-Bus so the container's systemd --user never starts its
 # own bus. All apps (terminal and desktop-launched) use the host bus instead,
 # which is required for xdg-desktop-portal (screen sharing) and keyring access.
