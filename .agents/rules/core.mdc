@@ -31,7 +31,7 @@ For each file you touched, run through the matching checklist below. If you can'
 | `bin/box` (commands, args, flags, behavior) | `_BOX_COMMANDS` array, case dispatch, `usage()`, both completions heredocs, `README.md` CLI table + workflows, `AGENTS.md` bin/box section, `.agents/skills/box-cli-conventions/SKILL.md` |
 | `Containerfile.base` or per-box `Containerfile` | `README.md` package-list / customization sections, `AGENTS.md` Containerfile Conventions, `.agents/skills/containerfile-conventions/SKILL.md`, comments inside the Containerfile (remove stale workaround notes) |
 | `box.toml` (any box) or `compile-box-toml.py` | `.agents/skills/box-toml-conventions/SKILL.md`, `AGENTS.md` box.toml conventions section, `.agents/skills/adding-a-box/SKILL.md` template |
-| `scripts/init-root.sh`, `init-user.sh`, `shell-init.sh` | `AGENTS.md` Repository Structure (script inventory), `.agents/skills/box-toml-conventions/SKILL.md` "Init script execution contexts" table |
+| `scripts/init-root.sh`, `init-user.sh`, `shell-init.sh`, `shell-env.sh` | `AGENTS.md` Repository Structure (script inventory), `README.md` repo tree, `.agents/skills/box-toml-conventions/SKILL.md` "Init script execution contexts" table, `.agents/skills/repo-overview/SKILL.md` script list |
 | `.github/workflows/build.yml` | `AGENTS.md` "Image Build Flow" + path-filter notes, `.agents/skills/adding-a-box/SKILL.md` CI section |
 | Adding/removing a box | Run the full `.agents/skills/adding-a-box/SKILL.md` checklist |
 | Adding a new top-level directory copied into images | Path filters in `build.yml`, `Containerfile.base` COPY, `AGENTS.md` Repository Structure, `.agents/skills/repo-overview/SKILL.md` |

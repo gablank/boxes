@@ -184,7 +184,8 @@ local-bin/              Scripts installed into ALL boxes
 scripts/
   init-root.sh          First-start root init (chsh, /etc/environment)
   init-user.sh          First-start user init (~/.ssh, .zshrc, rustup)
-  shell-init.sh         Sourced from .zshrc on every shell open
+  shell-init.sh         Sourced from .zshrc on every shell open (interactive)
+  shell-env.sh          Sourced from /etc/zsh/zshenv + /etc/profile.d (every shell)
   compile-box-toml.py   Compiles box.toml → distrobox.ini
 bin/
   box                   Host-side CLI

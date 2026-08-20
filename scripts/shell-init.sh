@@ -4,6 +4,10 @@
 # this runs on every shell open, not just first container start.
 # All box runtime env and services live here.
 # Changes to this file take effect on next shell open (no box rebuild needed).
+#
+# Interactive-only. Anything a NON-interactive shell (`zsh -c ...`, a script, a
+# desktop launcher) must also see belongs in shell-env.sh, which the base image
+# wires into /etc/zsh/zshenv and /etc/profile.d instead.
 
 # --- SSH/sudo askpass (drop leaked host askpass) ---
 # The host (KDE) exports SSH_ASKPASS/SUDO_ASKPASS pointing at a GUI helper

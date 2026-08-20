@@ -14,7 +14,7 @@ This repo defines distrobox container environments built via CI and managed loca
 - `priv/Containerfile`, `work/Containerfile`, `dev/Containerfile` - thin layers adding box-specific packages
 - Images are built by GitHub Actions on every push to `main` and nightly, and pushed to `ghcr.io/<repo-owner>/box-*` (derived from `github.repository_owner`, so forks build to their own registry)
 - `box.toml` files (one per box) are the source of truth; `scripts/compile-box-toml.py` compiles them to `distrobox.ini` (gitignored). `distrobox assemble` then pulls and creates the container.
-- `scripts/init-root.sh`, `init-user.sh`, and `shell-init.sh` are the three baked-in init scripts (root first-start, user first-start, every-shell-open, respectively)
+- `scripts/init-root.sh`, `init-user.sh`, `shell-init.sh`, and `shell-env.sh` are the four baked-in init scripts (root first-start, user first-start, every-interactive-shell, every-shell-including-non-interactive, respectively)
 - `bin/box` is the CLI management tool (assemble, enter, set-image, pull, images, etc.)
 
 ## Key directories

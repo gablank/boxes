@@ -32,13 +32,16 @@ Each entry has `host`, `container`, and optional `options` (e.g. `"rw,z"`). The 
 
 ## Init script execution contexts
 
-The base image ships three init scripts. `init_hooks` chains the first two (`init-root.sh`, then `init-user.sh` via `su -`); `shell-init.sh` is sourced from `.zshrc` instead. Each runs in a different context — putting code in the wrong script will fail silently or crash the assemble.
+The base image ships four init scripts. `init_hooks` chains the first two (`init-root.sh`, then `init-user.sh` via `su -`); `shell-init.sh` is sourced from `.zshrc`, and `shell-env.sh` system-wide from `/etc/zsh/zshenv` and `/etc/profile.d`. Each runs in a different context — putting code in the wrong script will fail silently or crash the assemble.
 
 | Script | Runs as | TTY | When | Use for |
 |--------|---------|-----|------|---------|
 | `init-root.sh` | root | No | First container start, from `init_hooks` before `su` | `chsh`, writing `/etc/environment`, systemd overrides — anything requiring root |
 | `init-user.sh` | container user | No | First container start, from `init_hooks` via `su -` | User dotfiles, `~/.ssh`, `.zshrc` setup — anything in `$HOME` |
-| `shell-init.sh` | container user | Yes | Every interactive shell open (sourced from `.zshrc`) | Runtime env vars, aliases, service health checks |
+| `shell-init.sh` | container user | Yes | Every **interactive** shell open (sourced from `.zshrc`) | Prompts, aliases, service health checks, env only interactive shells need |
+| `shell-env.sh` | any user | No | **Every** shell — `/etc/zsh/zshenv` (all zsh, incl. `zsh -c`) and `/etc/profile.d` (bash/sh login) | Env that non-interactive shells and scripts must also see |
+
+`shell-env.sh` has the widest reach of the four, so it must stay POSIX `sh`, silent, fast, and free of `set -e` — an error there breaks every shell in the box. When adding an env var, ask whether a script or desktop launcher needs it: if yes it goes in `shell-env.sh`, otherwise `shell-init.sh`.
 
 **Critical constraint:** `init-root.sh` and `init-user.sh` have **no TTY**. Commands that prompt for input (`sudo`, interactive `chsh`, `passwd`) will fail. If a command needs root privileges, it belongs in `init-root.sh` (which already runs as root), not in `init-user.sh` with `sudo`.
 
