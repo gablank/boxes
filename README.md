@@ -6,6 +6,10 @@ Each box is an [Arch Linux](https://archlinux.org/) container with a full develo
 
 `priv` and `work` also run `sshd`, and their SSH host keys persist in `~/distrobox/<box>/ssh-hostkeys/` so upgrading a box doesn't make clients think its identity changed. Delete that directory and restart the box to rotate the keys deliberately.
 
+Those boxes accept **keys only** — `PasswordAuthentication` and `KbdInteractiveAuthentication` are both off. This matters because `priv` and `work` copy your host password hash into the container on first start, so a password-accepting sshd on a tailnet would accept your host login password. Put your public key in `~/distrobox/<box>/home/.ssh/authorized_keys` to ssh into a box; `box enter` goes through podman and never touches sshd, so you cannot lock yourself out.
+
+Anything you edit in `/etc/ssh/sshd_config` inside a box is lost on the next `box upgrade`, `box assemble` or `box rescue` — all boxes set `replace = true`, so the container's writable layer is discarded. Persistent sshd changes belong in a `sshd_config.d` drop-in in `Containerfile.base` (see `10-box-auth.conf` and `10-box-host-keys.conf` there).
+
 Every image ships [`host-spawn`](https://github.com/1player/host-spawn) at a pinned version. distrobox needs it to run commands back on the host (`distrobox-host-exec`) and to import the host's display variables in its login profile, but it ships no binary of its own — it offers to download one into the container instead, which every recreate throws away. Baking it in keeps `command not found: host-spawn` out of your login shells.
 
 ## Boxes
