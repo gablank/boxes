@@ -6,8 +6,8 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
 REGISTRY="ghcr.io"
 
-_BOX_COMMANDS=(init list enter rescue set-image build upgrade assemble assemble-all pull stop status logs images vendor-aur completions help)
-_BOX_COMMANDS_WITH_BOX=(enter rescue set-image build upgrade assemble pull stop status logs images)
+_BOX_COMMANDS=(init list enter rescue set-image build upgrade assemble assemble-all pull stop status doctor logs images vendor-aur completions help)
+_BOX_COMMANDS_WITH_BOX=(enter rescue set-image build upgrade assemble pull stop status doctor logs images)
 
 _detect_owner() {
     local remote
@@ -70,6 +70,7 @@ ${BOLD}COMMANDS${RESET}
     pull        <box> [tag]  Pull image from registry (default: current tag). Does not restart.
     stop        <box>        Stop a box
     status      <box>        Show detailed box info and build metadata
+    doctor      [box]        Check running boxes for silent drift (default: all)
     logs        <box> [...]  Show container logs (pass-through to podman logs)
     images      <box>        List available image versions on ghcr.io
     vendor-aur  <pkgbase>... Re-vendor AUR PKGBUILDs from the AUR and show a diff to vet (--all for every one)
@@ -458,6 +459,165 @@ cmd_status() {
     fi
 }
 
+# --- doctor ----------------------------------------------------------------
+# Every check here catches a failure that is silent by construction: the box
+# keeps running and nothing errors, so the problem only surfaces later and far
+# from its cause. Add a check when you fix a bug whose symptom appeared
+# somewhere other than where the mistake was.
+_DOCTOR_FAIL=0
+
+_doctor_ok()   { printf "  ${GREEN}ok${RESET}    %s\n" "$1"; }
+_doctor_warn() { printf "  ${YELLOW}warn${RESET}  %s\n" "$1"; }
+_doctor_fail() { printf "  ${RED}FAIL${RESET}  %s\n" "$1"; _DOCTOR_FAIL=1; }
+_doctor_hint() { printf "        ${CYAN}%s${RESET}\n" "$1"; }
+
+_box_exec() {
+    local box="$1" name="$2"; shift 2
+    local podman_cmd="podman"
+    is_rootful "$box" && podman_cmd="sudo podman"
+    $podman_cmd exec "$name" "$@" 2>/dev/null || true
+}
+
+# Files that live in the writable layer and are *supposed* to differ from their
+# package, because distrobox or podman rewrites them at every container start.
+# Keep this list tight — each entry is a check being skipped, so it needs a
+# reason:
+#   passwd/group/shadow/gshadow/subuid/subgid  distrobox creates the container user
+#   hosts/resolv.conf/host.conf                podman writes these per container
+#   pam.d/su                                   distrobox-init patches it
+#   environment                                scripts/init-root.sh writes it
+#   pacman.conf                                IgnorePkg for the tailscale wrapper
+#   libalpm/scripts/systemd-hook               distrobox stubs it to `exit 0` in
+#                                              non-init boxes (dev), which have
+#                                              no systemd for pacman hooks to call
+_DOCTOR_EXPECTED_MODIFIED=(
+    /etc/passwd /etc/group /etc/shadow /etc/gshadow /etc/subuid /etc/subgid
+    /etc/hosts /etc/resolv.conf /etc/host.conf
+    /etc/pam.d/su
+    /etc/environment
+    /etc/pacman.conf
+    /usr/share/libalpm/scripts/systemd-hook
+)
+
+# Catches a config edit made inside a box that the next recreate will silently
+# revert — the box returns to the packaged default and whatever the edit was
+# for stops applying, with no error anywhere.
+#
+# Two conditions must both hold, and testing only the first is what makes a
+# naive version of this check useless:
+#   1. the file's contents no longer match its package (pacman -Qkk), and
+#   2. the change lives in the container's WRITABLE layer (podman diff "C").
+# Plenty of files satisfy (1) alone because Containerfile.base modified them at
+# build time — the tailscale wrapper, the .desktop fixes. Those are rebuilt on
+# every recreate and reporting them is noise. Only (1) AND (2) means "you will
+# lose this".
+#
+# Only SHA256 mismatches count; pacman also reports mtime-only differences,
+# which the image build produces in bulk and which mean nothing. The path is
+# matched as "the field starting with /" rather than by position, because
+# pacman prints both "backup file: pkg: /path (...)" and bare "pkg: /path (...)".
+_doctor_check_pkg_edits() {
+    local box="$1" name="$2" podman_cmd="podman" modified layer_edits f
+    is_rootful "$box" && podman_cmd="sudo podman"
+
+    modified="$(_box_exec "$box" "$name" sh -c 'pacman -Qkk 2>&1' \
+        | awk '/SHA256 checksum mismatch/ {
+                   for (i = 1; i <= NF; i++) if ($i ~ /^\//) { print $i; break }
+               }' \
+        | sort -u)"
+    layer_edits="$($podman_cmd diff "$name" 2>/dev/null \
+        | awk '$1 == "C" { print $2 }' | sort -u)"
+
+    modified="$(comm -12 <(printf '%s\n' "$modified") <(printf '%s\n' "$layer_edits") \
+        | grep -vxF "$(printf '%s\n' "${_DOCTOR_EXPECTED_MODIFIED[@]}")" || true)"
+
+    if [[ -z "$modified" ]]; then
+        _doctor_ok "no packaged files edited in the writable layer"
+        return
+    fi
+    _doctor_fail "edited packaged files — the next recreate reverts these:"
+    while IFS= read -r f; do
+        printf "        %s\n" "$f"
+    done <<< "$modified"
+    _doctor_hint "Move them into Containerfile.base (a drop-in, not an edit) to make them stick."
+}
+
+# The persistent-host-key fix ships in two halves that travel separately: the
+# /var/lib/box-ssh mount comes from box.toml (repo) and the HostKey drop-in
+# plus box-sshd-keygen come from the image. With only one half applied the box
+# looks configured but still regenerates its identity on every recreate, and
+# because tailscale state persists, clients see the same name and address
+# serving a new key — reported as a possible MITM.
+_doctor_check_sshd() {
+    local box="$1" name="$2"
+    is_initful "$box" || return 0
+
+    local declares_mount=no has_keygen hostkeys keycount pwauth kbdauth
+    grep -q '/var/lib/box-ssh' "$REPO_ROOT/$box/box.toml" && declares_mount=yes
+    has_keygen="$(_box_exec "$box" "$name" sh -c \
+        '[ -x /usr/local/sbin/box-sshd-keygen ] && echo yes || echo no')"
+    hostkeys="$(_box_exec "$box" "$name" sh -c \
+        'sshd -T 2>/dev/null | grep -ci "^hostkey /var/lib/box-ssh/"')"
+    keycount="$(_box_exec "$box" "$name" sh -c \
+        'ls /var/lib/box-ssh/*_key 2>/dev/null | wc -l')"
+
+    if [[ "$declares_mount" == no ]]; then
+        _doctor_fail "init box with no /var/lib/box-ssh mount — host keys rotate on every recreate"
+        _doctor_hint "Add the ssh-hostkeys [[mount-dir]] to $box/box.toml."
+    elif [[ "$has_keygen" == no ]]; then
+        _doctor_fail "ssh-hostkeys mount declared but the image predates it — host keys still rotate"
+        _doctor_hint "Image and box.toml disagree. Run: box upgrade $box"
+    elif [[ "${hostkeys:-0}" -lt 1 ]]; then
+        _doctor_fail "sshd is not serving host keys from /var/lib/box-ssh"
+    elif [[ "${keycount:-0}" -lt 1 ]]; then
+        _doctor_fail "/var/lib/box-ssh is empty — nothing is persisting"
+    else
+        _doctor_ok "ssh host keys persist across recreates"
+    fi
+
+    pwauth="$(_box_exec "$box" "$name" sh -c \
+        'sshd -T 2>/dev/null | grep -i "^passwordauthentication " | cut -d" " -f2')"
+    kbdauth="$(_box_exec "$box" "$name" sh -c \
+        'sshd -T 2>/dev/null | grep -i "^kbdinteractiveauthentication " | cut -d" " -f2')"
+    if [[ "$pwauth" == no && "$kbdauth" == no ]]; then
+        _doctor_ok "sshd accepts keys only"
+    else
+        _doctor_fail "sshd accepts passwords (password=${pwauth:-?} keyboard-interactive=${kbdauth:-?})"
+        _doctor_hint "init_hooks import the host's password hash, so this accepts your host login."
+    fi
+}
+
+cmd_doctor() {
+    local boxes box name status rflag
+    if [[ $# -ge 1 ]]; then
+        validate_box "$1"
+        boxes="$1"
+    else
+        boxes="$(discover_boxes)"
+    fi
+
+    for box in $boxes; do
+        name="$(get_box_name "$box")"
+        rflag="$(root_flag "$box")"
+        status="$(container_status "$name" "$rflag")"
+        printf "${BOLD}%s${RESET} (%s)\n" "$box" "$status"
+        if [[ "$status" != "running" ]]; then
+            _doctor_warn "not running — checks need a live container, skipped"
+            echo ""
+            continue
+        fi
+        _doctor_check_pkg_edits "$box" "$name"
+        _doctor_check_sshd "$box" "$name"
+        echo ""
+    done
+
+    if (( _DOCTOR_FAIL )); then
+        printf "${RED}Problems found.${RESET}\n"
+        return 1
+    fi
+    printf "${GREEN}All checks passed.${RESET}\n"
+}
+
 cmd_logs() {
     validate_box "$1"
     local box="$1"; shift
@@ -690,6 +850,7 @@ _box_commands() {
         'rescue:enter box with minimal init (skips hooks)'
         'stop:stop a box'
         'status:show detailed box info and build metadata'
+        'doctor:check running boxes for silent drift'
         'logs:show init log'
         'images:list available image versions on ghcr.io'
         'vendor-aur:re-vendor AUR PKGBUILDs and show a diff to vet'
@@ -823,6 +984,9 @@ case "$command" in
     status)
         [[ $# -ge 1 ]] || { printf "${RED}Usage: box status <box>${RESET}\n" >&2; exit 1; }
         cmd_status "$1"
+        ;;
+    doctor)
+        cmd_doctor "$@"
         ;;
     logs)
         [[ $# -ge 1 ]] || { printf "${RED}Usage: box logs <box> [podman-log-flags...]${RESET}\n" >&2; exit 1; }
