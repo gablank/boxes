@@ -32,6 +32,13 @@ RUN pacman -Qqn | pacman -S --noconfirm --overwrite '*' -
 #   Claude Code sandbox: bubblewrap (process isolation), socat (socket proxy),
 #     libseccomp (BPF seccomp filters)
 #   VPN: tailscale (client for per-box tailnets)
+#   Smartcard/YubiKey: yubikey-manager (ykman), libfido2 (FIDO2/U2F library and
+#     tools; also what OpenSSH's ssh-sk-helper dlopens for *-sk keys),
+#     opensc + yubico-piv-tool (PKCS#11 modules for PIV-backed SSH),
+#     pcsc-tools (pcsc_scan, for diagnosing what the reader is presenting).
+#     pcsclite + ccid arrive as yubikey-manager deps — the client library is
+#     what these boxes use; pcscd itself runs on the HOST, see the masking
+#     block further down for why.
 #   KDE integration: breeze-gtk (Breeze theme for GTK apps like Chrome), xdg-desktop-portal-kde (KDE notifications + file dialogs)
 RUN pacman -S --noconfirm --needed \
     base-devel glib2 git openssh sudo ca-certificates curl wget gnupg inetutils \
@@ -48,6 +55,7 @@ RUN pacman -S --noconfirm --needed \
     github-cli git-absorb diff-so-fancy \
     bubblewrap socat libseccomp \
     tailscale \
+    yubikey-manager libfido2 opensc yubico-piv-tool pcsc-tools \
     breeze-gtk xdg-desktop-portal-kde
 
 # Switch iptables/ip6tables to nftables backend (host kernel lacks ip_tables module)
@@ -224,6 +232,44 @@ RUN mkdir -p /etc/systemd/system/tailscaled.service.d && \
     chmod +x /usr/bin/tailscale && \
     sed -i '/^\[options\]/a IgnorePkg = tailscale' /etc/pacman.conf && \
     systemctl enable tailscaled.service
+
+# Smartcard / pcscd: the Arch wiki's "enable pcscd.service (or pcscd.socket)"
+# step deliberately does NOT apply to these boxes — the daemon belongs to the
+# host and the image ships only the client half.
+#
+# Two facts decide this. First, the same distrobox socket forwarding described
+# in the tailscale block above: the entrypoint links every host /run socket into
+# the container, so on a host that runs pcscd the box already comes up with
+# /run/pcscd/pcscd.comm -> /run/host/run/pcscd/pcscd.comm. Second, pcscd needs
+# exclusive USB access to the reader and a box has none: podman gives each
+# container its own minimal /dev with no /dev/bus/usb and no /dev/hidraw* (this
+# is the same reason the tailnet boxes must pass --device /dev/net/tun by hand).
+# An in-container pcscd would therefore find no reader at all, and would fight
+# the forwarded symlink for /run/pcscd/pcscd.comm on the way to finding nothing.
+#
+# Talking to the host daemon is not a fallback, it is the better design: one
+# process owns the reader, and the card stays available across box recreates.
+# The units are masked so nothing can undo that by accident — a stray
+# `systemctl start pcscd`, a package post-install, or someone (human or agent)
+# working through the wiki page. ccid ships as a yubikey-manager dependency and
+# is inert here for the same reason; the driver that matters is the host's.
+#
+# Consequence worth knowing: the CCID applets are the ones that can work inside
+# a box (`ykman info`, `ykman piv|oath|openpgp`, PIV-backed SSH via PKCS#11,
+# `gpg --card-status`), while every HID transport cannot — fido2-token,
+# `ssh-keygen -t ed25519-sk`, `ykman otp|fido`, and WebAuthn in the exported
+# Chrome all open /dev/hidraw* directly. Unmasking these units only helps if USB
+# is also passed into the box.
+#
+# The CCID path additionally needs polkit's blessing, and that is HOST config,
+# so it is deliberately not shipped here. pcscd grants access_pcsc/access_card
+# on allow_active only. Rootless boxes (dev) are parented under
+# user@1000.service, so host logind resolves them to the user's session and
+# allows them; rootful boxes (priv, work) are parented under machine.slice with
+# no session at all and are denied — which surfaces as SCARD_W_SECURITY_VIOLATION
+# and "WARNING: PC/SC not available" from ykman, not as a missing daemon.
+# README.md documents the host-side polkit rule that lifts it.
+RUN systemctl mask pcscd.service pcscd.socket
 
 # SSH host keys: stock sshd generates them into /etc/ssh on first start, which
 # lives in the container's writable layer. Every recreate (`box upgrade`,
