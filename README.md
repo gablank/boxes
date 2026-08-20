@@ -74,6 +74,7 @@ box assemble-all                Assemble all boxes (stops all boxes)
 box pull        <box> [tag]     Pull image without rebuilding (default: current tag in box.toml)
 box stop        <box>           Stop a box
 box status      <box>           Show detailed box info and build metadata
+box doctor      [box]           Check running boxes for silent drift (default: all)
 box logs        <box> [...]     Show container logs (pass-through to podman logs)
 box images      <box>           List available image versions on ghcr.io
 box vendor-aur  <pkgbase>...     Re-vendor AUR PKGBUILDs and show a diff to vet (--all for every one)

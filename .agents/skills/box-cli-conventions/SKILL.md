@@ -25,6 +25,16 @@ Each command has exactly one responsibility:
 - `build [--no-cache] <box>` — local image build (base + box); uses the layer cache unless `--no-cache` is given
 - `images <box>` — lists registry tags; marks the tag the container is built from with `← current` (green), and the tag the next `assemble` will use with `← next` (yellow); `← current` uses `podman inspect` so it appears on stopped containers too
 - `vendor-aur <pkgbase>... | --all` — re-vendors AUR PKGBUILDs into `aur/` and prints a diff to vet (thin wrapper over `scripts/vendor-aur.sh`); takes a pkgbase, **not** a box, so it is not in `_BOX_COMMANDS_WITH_BOX`
+- `doctor [box]` — read-only drift checks against *running* containers; no box argument means all boxes. Returns non-zero if any check fails, so it is usable as a gate. The box argument is optional, but it is still in `_BOX_COMMANDS_WITH_BOX` so completion offers box names
+
+## doctor checks
+
+`doctor` exists for failures that are **silent**: the box keeps working, so the problem only shows up later and far from its cause. Both current checks came from real incidents — host keys rotating on every recreate, and a hand-edited `sshd_config` that a recreate would have quietly reverted.
+
+- Writable-layer edits to packaged files require **two** signals to be reported: a `pacman -Qkk` SHA256 mismatch *and* a `podman diff` `C` entry. The mismatch alone is not enough — `Containerfile.base` modifies plenty of packaged files at build time (the tailscale wrapper, the `.desktop` fixes), and those are rebuilt on every recreate. Only a change in the writable layer is one you actually lose.
+- `_DOCTOR_EXPECTED_MODIFIED` allowlists paths distrobox/podman rewrite at every container start (user/group files, `resolv.conf`, the `systemd-hook` stub in non-init boxes). Every entry is a check being skipped, so each one carries a comment saying why.
+- The SSH check tests both halves of the persistent-host-key mechanism separately, because they ship apart — the mount from `box.toml`, the drop-in and `box-sshd-keygen` from the image — and either half alone still rotates keys while looking configured.
+- Helpers are `_doctor_ok` / `_doctor_warn` / `_doctor_fail` / `_doctor_hint`; only `_doctor_fail` sets the exit status. Use `warn` for "can't check this right now" (box not running), not for real problems.
 
 ## Image tag management
 
