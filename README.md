@@ -114,6 +114,57 @@ box init                        # auto-detect from git remote
 box init <github-username>      # or specify explicitly
 ```
 
+## YubiKeys and smartcards
+
+Every box ships `ykman`, `libfido2`, `opensc`, `yubico-piv-tool` and `pcsc_scan`, and talks to the **host's** `pcscd` — distrobox forwards its socket into each box as `/run/pcscd/pcscd.comm`, so one daemon owns the reader and the card survives box recreates. The boxes therefore do **not** run their own `pcscd`; `pcscd.service` and `pcscd.socket` are masked in the image on purpose. If you're following the [Arch wiki YubiKey page](https://wiki.archlinux.org/title/YubiKey), skip its "enable pcscd.service" step for the boxes and make sure `pcscd` is enabled **on the host** instead:
+
+```bash
+systemctl enable --now pcscd.socket   # on the host, not in a box
+```
+
+### Host step: letting the rootful boxes reach the reader
+
+`pcscd` is polkit-gated — `org.debian.pcsc-lite.access_pcsc` and `access_card` are granted on `allow_active` only, meaning processes in an active login session. Rootless boxes (`dev`) are parented under `user@1000.service`, so logind resolves them to your session and they are allowed. Rootful boxes (`priv`, `work`) are parented under `machine.slice` with no session at all, so they are **denied** — which shows up as `SCARD_W_SECURITY_VIOLATION` and `WARNING: PC/SC not available` from `ykman`, easily misread as a dead daemon.
+
+This is host configuration, not image configuration, so it is deliberately **not** shipped in this repo. Run it on the host if you want smartcard access from the rootful boxes:
+
+```bash
+sudo tee /etc/polkit-1/rules.d/50-pcscd-boxes.rules >/dev/null <<EOF
+// Rootful distrobox containers have no logind session, so pcsc-lite's
+// allow_active default can never match them. Grant the two pcsc actions
+// to this user instead.
+polkit.addRule(function(action, subject) {
+    if ((action.id == "org.debian.pcsc-lite.access_pcsc" ||
+         action.id == "org.debian.pcsc-lite.access_card") &&
+        subject.user == "$USER") {
+        return polkit.Result.YES;
+    }
+});
+EOF
+```
+
+No daemon restart needed — polkit picks the file up immediately. Delete the file to revert.
+
+Weigh the tradeoff first: this drops the active-session requirement, so **any** process running as you reaches the reader without a prompt, including anything with a shell in `priv`/`work` (which run `sshd` and sit on tailnets). The card's own PIN and touch policy still gate PIV/OpenPGP/OATH operations, so what this grants is reader access, not key material. Narrowing it further is not really possible: `subject.local` and `subject.active` both derive from the session these processes don't have, so adding either makes the rule never match, and `polkit.Result.AUTH_*` fails closed because a session-less process has no authentication agent to prompt through.
+
+To check polkit's verdict for a box without changing anything — `pkcheck` is polkit's own decision procedure, so a `1` here is proof the denial is authorization and not a broken socket:
+
+```bash
+# on the host, where <pid> is any uid-1000 process inside the box
+pkcheck --action-id org.debian.pcsc-lite.access_pcsc --process <pid>; echo $?   # 0 = allowed
+```
+
+### What works where
+
+| Transport | Where it works | Why |
+|---|---|---|
+| CCID — `ykman info`, `ykman piv \| oath \| openpgp`, PIV-backed SSH via PKCS#11, `gpg --card-status` | `dev` as-is; `priv`/`work` after the polkit rule above | Goes over the forwarded `pcscd` socket |
+| HID — `fido2-token`, `ssh-keygen -t ed25519-sk`, `ykman otp \| fido`, WebAuthn in the exported Chrome | Host only | These open `/dev/hidraw*` directly, and podman gives each container a minimal `/dev` with no USB or hidraw nodes |
+
+Verify from inside a box with `opensc-tool --list-readers` (or `pcsc_scan`, which streams card events until you Ctrl-C), then `ykman info`.
+
+For PIV-backed SSH, point `ssh` at a PKCS#11 module: `ssh -I /usr/lib/libykcs11.so` (YubiKey-specific) or `-I /usr/lib/opensc-pkcs11.so`. For `gpg --card-status`, add `disable-ccid` to `~/.gnupg/scdaemon.conf` so scdaemon uses PC/SC instead of hunting for a USB device it cannot see.
+
 ## Customization
 
 ### Add a package to all boxes
