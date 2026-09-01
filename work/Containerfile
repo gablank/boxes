@@ -13,8 +13,9 @@ ARG BUILD_SHA=unknown
 #     live in workbox's netns (not the host's). Replaces the host podman.sock
 #     bind that priv still uses.
 #   firefox: web browser
+#   obsidian: markdown notes
 RUN pacman -Syu --noconfirm --needed kubectl k9s qemu-base qemu-img glab \
-    podman netavark aardvark-dns fuse-overlayfs slirp4netns firefox && \
+    podman netavark aardvark-dns fuse-overlayfs slirp4netns firefox obsidian && \
     pacman -Scc --noconfirm && \
     rm -rf /var/cache/pacman/pkg/*
 

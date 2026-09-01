@@ -8,7 +8,8 @@ ARG BUILD_SHA=unknown
 #   glab: GitLab CLI
 #   fuse2: FUSE filesystem support
 #   firefox: web browser
-RUN pacman -S --noconfirm --needed glab fuse2 firefox && \
+#   obsidian: markdown notes
+RUN pacman -S --noconfirm --needed glab fuse2 firefox obsidian && \
     pacman -Scc --noconfirm && \
     rm -rf /var/cache/pacman/pkg/*
 
