@@ -39,6 +39,9 @@ RUN pacman -Qqn | pacman -S --noconfirm --overwrite '*' -
 #     pcsclite + ccid arrive as yubikey-manager deps — the client library is
 #     what these boxes use; pcscd itself runs on the HOST, see the masking
 #     block further down for why.
+#   File encryption: age (encrypt/decrypt), age-plugin-yubikey (identities held
+#     on a YubiKey's PIV applet — CCID, so it works in a box over the forwarded
+#     host pcscd socket, subject to the same polkit gate as the rest of PIV)
 #   KDE integration: breeze-gtk (Breeze theme for GTK apps like Chrome), xdg-desktop-portal-kde (KDE notifications + file dialogs)
 RUN pacman -S --noconfirm --needed \
     base-devel glib2 git openssh sudo ca-certificates curl wget gnupg inetutils \
@@ -56,6 +59,7 @@ RUN pacman -S --noconfirm --needed \
     bubblewrap socat libseccomp \
     tailscale \
     yubikey-manager libfido2 opensc yubico-piv-tool pcsc-tools \
+    age age-plugin-yubikey \
     breeze-gtk xdg-desktop-portal-kde
 
 # Switch iptables/ip6tables to nftables backend (host kernel lacks ip_tables module)
