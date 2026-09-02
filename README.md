@@ -17,7 +17,7 @@ Every image ships [`host-spawn`](https://github.com/1player/host-spawn) at a pin
 | Box | Purpose |
 |-----|---------|
 | `priv` | Personal development environment |
-| `work` | Work environment (adds kubectl, k9s, qemu, glab) |
+| `work` | Work environment (adds kubectl, k9s, qemu, glab, rootless podman, firefox, obsidian, codex) |
 | `dev` | Minimal box for developing the box system itself |
 
 ## Quick Start

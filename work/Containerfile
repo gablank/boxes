@@ -14,8 +14,10 @@ ARG BUILD_SHA=unknown
 #     bind that priv still uses.
 #   firefox: web browser
 #   obsidian: markdown notes
+#   openai-codex: OpenAI's terminal coding agent (Claude Code ships in base)
 RUN pacman -Syu --noconfirm --needed kubectl k9s qemu-base qemu-img glab \
-    podman netavark aardvark-dns fuse-overlayfs slirp4netns firefox obsidian && \
+    podman netavark aardvark-dns fuse-overlayfs slirp4netns firefox obsidian \
+    openai-codex && \
     pacman -Scc --noconfirm && \
     rm -rf /var/cache/pacman/pkg/*
 
