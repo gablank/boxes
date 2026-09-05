@@ -41,7 +41,10 @@ The base image ships four init scripts. `init_hooks` chains the first two (`init
 | `shell-init.sh` | container user | Yes | Every **interactive** shell open (sourced from `.zshrc`) | Prompts, aliases, service health checks, env only interactive shells need |
 | `shell-env.sh` | any user | No | **Every** shell — `/etc/zsh/zshenv` (all zsh, incl. `zsh -c`) and `/etc/profile.d` (bash/sh login) | Env that non-interactive shells and scripts must also see |
 
-`shell-env.sh` has the widest reach of the four, so it must stay POSIX `sh`, silent, fast, and free of `set -e` — an error there breaks every shell in the box. When adding an env var, ask whether a script or desktop launcher needs it: if yes it goes in `shell-env.sh`, otherwise `shell-init.sh`.
+`shell-env.sh` has the widest reach of the four, so it must stay POSIX `sh`, silent, fast, and free of `set -e` — an error there breaks every shell in the box. When adding an env var, ask two questions:
+
+1. **Does a script or desktop launcher need it?** If yes → `shell-env.sh`, otherwise `shell-init.sh`.
+2. **Does anything in `/etc/profile.d` read it?** If yes → `shell-env.sh`, regardless of the first answer. `shell-init.sh` is sourced from `~/.zshrc`, which a login shell reaches *after* `/etc/profile.d`, so a value it sets is invisible to those scripts. This is why `DBUS_SESSION_BUS_ADDRESS` and `PULSE_SERVER` live in `shell-env.sh`: distrobox's `/etc/profile.d/distrobox_profile.sh` calls `host-spawn` over the session bus and, left to its own `/run/user/$UID/bus` default, fails in every **init** box (fresh `/run` tmpfs — the host's socket is only under `/run/host`). `shell-env.sh` beats it in both shells: `/etc/zsh/zshenv` precedes everything for zsh, and `box-env.sh` sorts before `distrobox_profile.sh` alphabetically. See the AGENTS.md Containerfile Conventions bullet for the full account.
 
 **Critical constraint:** `init-root.sh` and `init-user.sh` have **no TTY**. Commands that prompt for input (`sudo`, interactive `chsh`, `passwd`) will fail. If a command needs root privileges, it belongs in `init-root.sh` (which already runs as root), not in `init-user.sh` with `sudo`.
 

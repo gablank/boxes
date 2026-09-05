@@ -17,7 +17,7 @@ Every image ships [`host-spawn`](https://github.com/1player/host-spawn) at a pin
 | Box | Purpose |
 |-----|---------|
 | `priv` | Personal development environment |
-| `work` | Work environment (adds kubectl, k9s, qemu, glab, rootless podman, firefox, obsidian, codex) |
+| `work` | Work environment (adds kubectl, k9s, qemu, glab, rootless podman, firefox, obsidian, codex, ipython) |
 | `dev` | Minimal box for developing the box system itself |
 
 ## Quick Start
@@ -241,9 +241,10 @@ dev/
 local-bin/              Scripts installed into ALL boxes
 scripts/
   init-root.sh          First-start root init (chsh, /etc/environment)
-  init-user.sh          First-start user init (~/.ssh, .zshrc, rustup)
+  init-user.sh          First-start user init (~/.ssh, .zshrc, rustup, ~/.codex/AGENTS.md)
   shell-init.sh         Sourced from .zshrc on every shell open (interactive)
   shell-env.sh          Sourced from /etc/zsh/zshenv + /etc/profile.d (every shell)
+  box-brief.md          Agent brief loaded by Claude Code + Codex in every box session
   compile-box-toml.py   Compiles box.toml → distrobox.ini
 bin/
   box                   Host-side CLI
