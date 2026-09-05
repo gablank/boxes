@@ -354,6 +354,23 @@ RUN mkdir -p /etc/zsh && \
     printf '[ -r /usr/local/share/box-init/shell-env.sh ] && . /usr/local/share/box-init/shell-env.sh\n' \
         > /etc/profile.d/box-env.sh
 
+# Agent brief: a short, factual note telling any coding agent started in this box
+# that it is in a disposable distrobox container. Both supported agents load a
+# machine-wide instruction file at the start of EVERY session, whatever the cwd,
+# but by different routes:
+#   - Claude Code reads the managed-policy file /etc/claude-code/CLAUDE.md. That
+#     slot is the right one here: the image *is* the machine policy. It loads
+#     before user (~/.claude/CLAUDE.md) and project CLAUDE.md, so a repo's own
+#     instructions still win on conflict, and it needs no per-home wiring — a
+#     wiped or brand-new box home still gets it.
+#   - Codex has no /etc equivalent; it reads $CODEX_HOME/AGENTS.md (default
+#     ~/.codex/AGENTS.md). init-user.sh symlinks that at the copy below, since
+#     it is per-home. See scripts/init-user.sh.
+# Keep the brief short — it is prepended to every conversation in every box.
+COPY scripts/box-brief.md /usr/local/share/box-init/box-brief.md
+RUN mkdir -p /etc/claude-code && \
+    cp /usr/local/share/box-init/box-brief.md /etc/claude-code/CLAUDE.md
+
 COPY local-bin/ /usr/local/bin/
 RUN chmod +x /usr/local/bin/* 2>/dev/null || true
 

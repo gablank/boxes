@@ -25,4 +25,19 @@ if ! grep -qF "$source_line" ~/.zshrc 2>/dev/null; then
     printf '\n%s\n' "$source_line" >> ~/.zshrc
 fi
 
+# --- Agent brief for Codex (Claude Code gets it from /etc/claude-code/CLAUDE.md) ---
+# Codex has no machine-wide instruction file: it reads $CODEX_HOME/AGENTS.md
+# (default ~/.codex/AGENTS.md) at the start of every session, whatever the cwd.
+# A symlink keeps it current — the target is refreshed by each image rebuild,
+# so the brief tracks the repo without re-copying it into every home.
+# Only ever created when nothing is there: a real file at that path is the
+# user's own, and clobbering it would silently drop their instructions. To take
+# it over, replace the symlink with a real file (and paste in whatever of
+# /usr/local/share/box-init/box-brief.md still applies).
+readonly codex_brief=/usr/local/share/box-init/box-brief.md
+if [[ -f "$codex_brief" ]] && [[ ! -e ~/.codex/AGENTS.md ]]; then
+    mkdir -p ~/.codex
+    ln -sfn "$codex_brief" ~/.codex/AGENTS.md
+fi
+
 printf '[box-init] user init done\n'
