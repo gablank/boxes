@@ -61,7 +61,7 @@ aur/                        Vetted AUR PKGBUILDs vendored per pkgbase; images bu
   manifest.tsv              pkgbase → upstream git commit + fetch date (provenance)
   <pkgbase>/                PKGBUILD + local source files (*.install, *.sh, *.patch)
 priv/
-  Containerfile             Thin layer on base for privbox
+  Containerfile             Thin layer on base for privbox (adds glab, fuse2, firefox, obsidian, codex, ipython)
   box.toml                  Container definition — source of truth (distrobox.ini is generated, gitignored)
   local-bin/                Scripts/binaries installed only into privbox
 work/

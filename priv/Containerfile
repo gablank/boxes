@@ -9,8 +9,10 @@ ARG BUILD_SHA=unknown
 #   fuse2: FUSE filesystem support
 #   firefox: web browser
 #   obsidian: markdown notes
+#   openai-codex: OpenAI's terminal coding agent (Claude Code ships in base)
 #   ipython: enhanced interactive Python shell (the `p3` alias)
-RUN pacman -S --noconfirm --needed glab fuse2 firefox obsidian ipython && \
+RUN pacman -S --noconfirm --needed glab fuse2 firefox obsidian openai-codex \
+    ipython && \
     pacman -Scc --noconfirm && \
     rm -rf /var/cache/pacman/pkg/*
 
