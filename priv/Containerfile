@@ -9,7 +9,8 @@ ARG BUILD_SHA=unknown
 #   fuse2: FUSE filesystem support
 #   firefox: web browser
 #   obsidian: markdown notes
-RUN pacman -S --noconfirm --needed glab fuse2 firefox obsidian && \
+#   ipython: enhanced interactive Python shell (the `p3` alias)
+RUN pacman -S --noconfirm --needed glab fuse2 firefox obsidian ipython && \
     pacman -Scc --noconfirm && \
     rm -rf /var/cache/pacman/pkg/*
 
