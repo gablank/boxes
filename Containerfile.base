@@ -99,7 +99,10 @@ RUN cd /tmp/aur/yay && makepkg -si --noconfirm --needed
 #   Browser (exported via distrobox): google-chrome (desktop file patched later by chrome-wrapper)
 #   Database CLI tools (mongodump, mongorestore, etc.): mongodb-tools
 #   AI coding assistant (self-contained Bun binary): claude-code
-RUN for b in visual-studio-code-bin cursor-bin oh-my-zsh-git google-chrome mongodb-tools claude-code; do \
+#   Coding-agent supervisor (prebuilt release binary): herdr-bin — wanted in
+#     priv and work, but the AUR build scaffolding only exists here, so dev
+#     gets it too
+RUN for b in visual-studio-code-bin cursor-bin oh-my-zsh-git google-chrome mongodb-tools claude-code herdr-bin; do \
       ( cd "/tmp/aur/$b" && makepkg -si --noconfirm --needed ) || exit 1; \
     done
 
