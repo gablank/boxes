@@ -63,3 +63,38 @@ if [ -n "${HOME:-}" ]; then
     export TMUX_TMPDIR
     [ -d "$TMUX_TMPDIR" ] || mkdir -p "$TMUX_TMPDIR" 2>/dev/null || true
 fi
+
+# --- Host session D-Bus and PulseAudio ---
+# These live here, not in shell-init.sh, because of a strict ordering
+# requirement: distrobox's own /etc/profile.d/distrobox_profile.sh defaults
+# DBUS_SESSION_BUS_ADDRESS to unix:path=/run/user/$UID/bus and then calls
+# `host-spawn` four times to import XAUTHORITY/XAUTHLOCALHOSTNAME/
+# WAYLAND_DISPLAY/DISPLAY from the host. host-spawn reaches the host over that
+# very bus. In a NO-INIT box (dev) the guess happens to be right: distrobox
+# bind-mounts the host's /run/user/$UID, so the socket is there. In an INIT box
+# (priv, work) /run is a fresh tmpfs and the host's runtime dir is only under
+# /run/host, so every login shell opened with
+#   dial unix /run/user/1000/bus: connect: no such file or directory
+# and the display variables were silently lost. (Before host-spawn was shipped
+# in the image the same shells printed "command not found: host-spawn" instead
+# — installing it turned a missing binary into a failing one.)
+# shell-init.sh sets the same variable correctly but is sourced from ~/.zshrc,
+# which runs *after* /etc/profile.d — too late. /etc/zsh/zshenv is read before
+# anything else by every zsh, and box-env.sh sorts before distrobox_profile.sh
+# in /etc/profile.d, so setting it here wins in both shells.
+#
+# Pointing at the host's bus is also what makes xdg-desktop-portal work
+# (screen sharing, notifications); /etc/environment carries the same value for
+# desktop-launched apps, which bypass shell init entirely.
+_box_host_runtime="/run/host${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+if [ -S "${_box_host_runtime}/bus" ]; then
+    DBUS_SESSION_BUS_ADDRESS="unix:path=${_box_host_runtime}/bus"
+    export DBUS_SESSION_BUS_ADDRESS
+fi
+# The container's own /run/user/$UID/pulse socket is created by distrobox-enter
+# but connected to nothing in an init box, so aim clients at the host's.
+if [ -S "${_box_host_runtime}/pulse/native" ]; then
+    PULSE_SERVER="unix:${_box_host_runtime}/pulse/native"
+    export PULSE_SERVER
+fi
+unset _box_host_runtime

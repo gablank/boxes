@@ -49,21 +49,13 @@ export REGISTRY_AUTH_FILE="$HOME/.docker/config.json"
 
 [[ "$(pwd)" == /run/host/* ]] && cd ~
 
-# --- D-Bus ---
-# Use the host's session bus so xdg-desktop-portal works for screen sharing.
-# Distrobox exposes host sockets under /run/host; the container's own systemd
-# dbus sits at the default path, so we point at the host's socket explicitly.
-if [[ -S "/run/host${XDG_RUNTIME_DIR}/bus" ]]; then
-    export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/host${XDG_RUNTIME_DIR}/bus"
-fi
-
-# --- Audio ---
-# Point PulseAudio/PipeWire clients at the host's sockets. The container's own
-# sockets at /run/user/*/pulse and /run/user/*/pipewire-0 are dead (created by
-# distrobox-enter but not connected to anything in init containers).
-if [[ -S "/run/host${XDG_RUNTIME_DIR}/pulse/native" ]]; then
-    export PULSE_SERVER="unix:/run/host${XDG_RUNTIME_DIR}/pulse/native"
-fi
+# --- Host session D-Bus and audio: NOT here ---
+# DBUS_SESSION_BUS_ADDRESS and PULSE_SERVER used to be set in this file. They
+# now live in shell-env.sh, because distrobox's /etc/profile.d/
+# distrobox_profile.sh needs the bus address *before* ~/.zshrc is reached: it
+# calls host-spawn over the session bus and, with the wrong address, fails with
+# "dial unix /run/user/1000/bus: ... no such file or directory". Do not move
+# them back — see the comment in shell-env.sh.
 
 # --- Rust (rustup) ---
 # Rustup installs toolchain proxy shims (cargo, rustc, rustfmt, ...) to
