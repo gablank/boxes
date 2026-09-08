@@ -11,3 +11,9 @@ secrets.yaml
 secrets.yml
 id_rsa
 id_ed25519
+
+# Stray dotfiles that live in this directory because it doubles as a working
+# home; they are not part of the repo. This is a PUBLIC repo, so keep personal
+# config out of reach of an accidental `git add -A`.
+.gitconfig
+.claude/
