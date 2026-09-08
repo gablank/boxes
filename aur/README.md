@@ -4,8 +4,8 @@ Every AUR package in the images is built from a **PKGBUILD committed here** —
 the image build never fetches PKGBUILDs from the AUR. Vendoring makes recipe
 changes reviewable before they reach an image; its protection depends on the
 review and merge controls. The nightly workflow and external automated reviewer
-are part of that trust boundary. See [the security review](../SECURITY-REVIEW.md)
-for confirmed weaknesses in the current automation and the remediation order.
+are part of that trust boundary, and both have known weaknesses: read
+"Auditing a `vendor-aur` bump" below before relying on either.
 
 ## Layout
 
@@ -72,11 +72,19 @@ these from the repo root with the re-vendored changes unstaged. If the bump is
 already committed, add the range to each `git diff`/`git show` (`HEAD~1..HEAD`,
 `HEAD~1:aur/...`).
 
-Steps 1 and 4 run automatically in `aur-bump.yml`. The workflow normally aborts
-before opening a PR if either fails, but its report currently processes unsafe
-filename outputs before aborting (security review finding 1). Do not treat those
-gates as containment. Steps 2, 3 and 5 need a reader; the PR report is only an aid
-and its filtered diff must not replace the full diff.
+Steps 1-4 run automatically in `aur-bump.yml`, which aborts before opening a PR
+if any of them fails. Step 2 is enforced there by `scripts/validate-aur-diff.py`,
+a deterministic validator: every changed line must match an exact literal shape
+(a version, a checksum, a manifest row) and anything else fails the run. It never
+sources or executes the candidate recipe. `scripts/test-aur-validator.sh` holds
+its adversarial regression tests and runs in CI.
+
+The workflow is split so that the half handling upstream-controlled content holds
+no write token at all (`contents: read`, `persist-credentials: false`); a
+separate job holds the write tokens, runs only on PASS, and re-validates the
+patch it receives rather than trusting the verdict. Step 5 still needs a reader:
+validation proves a change is *literal*, not that the new upstream release is
+trustworthy, so the PR carries the full diff.
 
 The intended commit scope is `aur/`: the nightly vendor invocation targets
 existing package directories, staging is limited to `aur/`, and gate 1 checks
@@ -126,14 +134,20 @@ git status --porcelain aur/
 **2. Read the full diff, including purportedly routine lines.** Check complete
 assignments, quoting, command substitutions, extra commands, file modes, source
 expansions, and checksum-to-source mapping. Do not source or execute the candidate
-PKGBUILD to inspect its values. Automated acceptance requires a deterministic
-validator of literal changes against approved structure; prefix-based line
-stripping cannot establish that a recipe is safe.
+PKGBUILD to inspect its values. Prefix-based line stripping cannot establish that
+a recipe is safe: PKGBUILDs are shell, so `pkgver=1.2.3$(...)` is both a version
+assignment and a command.
 
 ```bash
-git diff --raw -- aur/
-git diff --no-ext-diff --no-textconv -- aur/
+git diff --raw -- aur/                          # paths, modes, file types
+git diff --no-ext-diff --no-textconv -- aur/    # the whole change
+python3 scripts/validate-aur-diff.py --worktree # the mechanical half of this step
 ```
+
+The validator is what `aur-bump.yml` gates on. Run it yourself on a manual bump:
+a PASS means every changed line is a literal version, checksum or manifest
+update, which is the part worth automating. It cannot tell you whether the new
+upstream release is trustworthy -- that is what the rest of this list is for.
 
 **3. Validate complete source origins and paths.** The comparison below is an
 aid after validating package names and file types. Read raw URLs and their

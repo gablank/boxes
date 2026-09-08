@@ -24,7 +24,7 @@
 # GitHub refuses a merge lacking it when the merging identity cannot bypass the
 # rule. Other writers with status permission can post the same context; it is
 # not exclusive to this workflow. Bind an expected integration in GitHub and
-# audit the merger's actual permissions. See SECURITY-REVIEW.md.
+# audit the merger's actual permissions.
 #
 # If you would rather not rely on unattended merging at all, delete the `/aur/`
 # line. Every bump then needs your approval -- one click on a PR that already

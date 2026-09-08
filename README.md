@@ -17,8 +17,7 @@ do not provide a security boundary between work and private software. The host
 Podman socket, host session bus, and rootful containers make image integrity
 especially important. The passwordless host Podman permission below is also
 effectively permission to obtain host root through container management.
-See [the security review](SECURITY-REVIEW.md) for the September 2026 audit,
-confirmed AUR automation weaknesses, and recommended fixes.
+Treat everything installed in either image as software trusted on the host.
 
 ## Boxes
 

@@ -74,6 +74,10 @@ dev/
   box.toml                  Container definition — source of truth
 local-bin/                  Scripts/binaries installed into ALL boxes
 scripts/
+  validate-aur-diff.py      Deterministic gate for an AUR bump: every changed line must be a literal
+                            version/checksum/manifest update, else FAIL. Never executes the recipe
+  test-aur-validator.sh     Adversarial regression tests for the above (runs in CI lint)
+  check-workflow-injection.py  Fails if any workflow puts `${{ }}` inside a `run:` block (runs in CI lint)
   init-root.sh              First-start root init (chsh, /etc/environment) — no TTY
   init-user.sh              First-start user init (~/.ssh, .zshrc, rustup, ~/.codex/AGENTS.md) — no TTY, no sudo
   shell-init.sh             Sourced from .zshrc on every shell open — interactive runtime env, services
@@ -87,9 +91,11 @@ host-systemd/               Host user units (hourly `box pull-all` timer) — ru
 setup.sh                    One-shot setup script for new users / forks
 .github/workflows/
   build.yml                 Nightly + on-push CI build and image cleanup
-  aur-bump.yml              Nightly re-vendor of all AUR PKGBUILDs; opens a PR with an audit report
-                            (a Claude cloud routine, prompt stored outside this repo, vets and merges it —
-                             see "Where the vetter lives" in aur/README.md)
+  aur-bump.yml              Nightly re-vendor of all AUR PKGBUILDs; opens a PR with an audit report.
+                            Two jobs: `audit` handles upstream-controlled content with NO write token,
+                            `publish` holds the tokens and re-validates what it receives. A Claude cloud
+                            routine vets the PR — its prompt lives outside this repo, see "Where the
+                            vetter lives" in aur/README.md
   CODEOWNERS                Scope guard: everything needs owner review except aur/ (needs branch protection to bite)
 .agents/
   rules/                    Always-active agent rules (core.mdc, self-improve.mdc)
@@ -118,7 +124,7 @@ setup.sh                    One-shot setup script for new users / forks
 - **Smartcards/YubiKeys use the host's `pcscd`, never one in the box.** `Containerfile.base` installs the client side (`yubikey-manager`, `libfido2`, `opensc`, `yubico-piv-tool`, `pcsc-tools`, `age` + `age-plugin-yubikey`; `pcsclite` and `ccid` come in as deps) and then **masks `pcscd.service` and `pcscd.socket`**. Do not "fix" that by enabling them, and do not follow the [Arch wiki YubiKey page](https://wiki.archlinux.org/title/YubiKey) on this point — its `enable pcscd.service` step assumes a normal host. Two reasons: distrobox's entrypoint forwards every host `/run` socket into the box, so `/run/pcscd/pcscd.comm` is already a symlink to the host daemon (the same shadowing mechanism as the tailscale socket); and pcscd needs exclusive USB access to the reader, which no box has — podman gives each container a minimal `/dev` with no `/dev/bus/usb` and no `/dev/hidraw*`, which is also why the tailnet boxes must pass `--device /dev/net/tun` explicitly. An in-box pcscd would find no reader *and* clobber the working socket. **What this buys and costs:** the CCID applets are the ones that can work in a box (`ykman info`, `ykman piv|oath|openpgp`, PIV-backed SSH via PKCS#11, `gpg --card-status`, `age-plugin-yubikey` — it is a PIV consumer, so it inherits both the socket forwarding and the polkit gate below), while the HID transports cannot — `fido2-token`, `ssh-keygen -t ed25519-sk`, `ykman otp|fido`, and WebAuthn in the exported Chrome all open `/dev/hidraw*` directly and must be run on the host. Making those work in a box is a `box.toml` device-passthrough change, not an unmask
 - **`WARNING: PC/SC not available` in `priv`/`work` is polkit, not a broken daemon — and the fix is host-side, so it does not belong in this repo.** pcscd grants `org.debian.pcsc-lite.access_pcsc`/`access_card` on `allow_active` only. Rootless boxes (`dev`) are parented under `user@1000.service`, so host logind resolves them to the user's active session and allows them; rootful boxes (`priv`, `work`) are parented under `machine.slice` with no session at all and are denied, which pcscd returns as `SCARD_W_SECURITY_VIOLATION` (0x8010006A) — easy to misdiagnose as a dead daemon. Confirm without changing anything using polkit's own decision procedure on the host: `pkcheck --action-id org.debian.pcsc-lite.access_pcsc --process <host-pid-of-a-uid-1000-process-in-the-box>`. The lift is a `/etc/polkit-1/rules.d/` rule on the host, documented in `README.md` as an opt-in host step and **intentionally not shipped here** — it is host- and user-specific, and it relaxes a security default that forks should opt into consciously. Do not try to "tighten" it with `subject.local`/`subject.active` (both derive from the missing session, so the rule would never match) or with `polkit.Result.AUTH_*` (session-less processes have no authentication agent, so it fails closed). Two traps when investigating: the Bash sandbox blocks AF_UNIX socket creation, so PC/SC probes there report a misleading `SCARD_E_NO_SERVICE` and `host-spawn` silently returns nothing — use `dangerouslyDisableSandbox`; and the boxes have their own PID namespace, so a missing `/proc/<pid>` for the pid in `pcscd.pid` proves nothing about the host daemon
 - `Containerfile.base` installs `host-spawn` to `/usr/bin/host-spawn` from a version-pinned, sha256-checked upstream release (it is in neither the official repos nor the AUR). distrobox's `/etc/profile.d/distrobox_profile.sh` (every login shell) and `distrobox-host-exec` both require it, but distrobox bind-mounts only its own shell scripts and no binary — the host has none either. Its fallback is a silent best-effort download during `distrobox-init` (`distrobox-host-exec -Y test ... || :`) into the writable layer that every `replace = true` recreate discards. That download lands in `dev` but not in `priv`/`work`; the untested suspect is egress at init time inside their own netns (`unshare_netns = true`). **Maintenance contract:** keep the pinned version at or above the `host_spawn_version` that the host's `distrobox-host-exec` requires, otherwise `distrobox-host-exec` starts prompting to download a newer one again. The binary dispatches on its own `argv[0]` — never rename it or symlink another command name to it unless you intend that command to run on the host
-- **AUR recipes are locked to vendored PKGBUILDs** — the build runs `makepkg` against `aur/<pkgbase>/`, never fetching recipes from the AUR. Review the full diff: version and checksum assignments are executable shell, so stripping lines by prefix is unsafe. Recipe provenance does not establish safety. Vendoring also does not pin every artifact: Oh My Zsh follows upstream Git HEAD, the gcloud component installer downloads additional artifacts, and npm/editor extensions have separate upstream trust. See `aur/README.md` and `SECURITY-REVIEW.md` for the audit procedure and automation limitations.
+- **AUR recipes are locked to vendored PKGBUILDs** — the build runs `makepkg` against `aur/<pkgbase>/`, never fetching recipes from the AUR. Review the full diff: version and checksum assignments are executable shell, so stripping lines by prefix is unsafe. Recipe provenance does not establish safety. Vendoring also does not pin every artifact: Oh My Zsh follows upstream Git HEAD, the gcloud component installer downloads additional artifacts, and npm/editor extensions have separate upstream trust. See `aur/README.md` for the audit procedure and the limits of the automation.
 - Box-specific Containerfiles (`priv/Containerfile`, `work/Containerfile`, `dev/Containerfile`) declare `ARG BASE_IMAGE=ghcr.io/gablank/box-base:latest` followed by `FROM ${BASE_IMAGE}`. CI overrides `BASE_IMAGE` to point to the fork owner's registry.
 - Build context is always the repo root
 - Both base and box Containerfiles accept `BUILD_DATE` and `BUILD_SHA` build args, written to `/etc/box-build-info`
@@ -178,6 +184,10 @@ The completion heredocs **interpolate** the command lists from the arrays at run
 - Every command extracted from the `case` dispatch block exists in `_BOX_COMMANDS`
 - Every `box <cmd>` invocation documented in `README.md`, `AGENTS.md`, the skills, and `setup.sh` exists in `_BOX_COMMANDS` (catches stale command names in docs)
 - `shellcheck --severity=error` passes on `bin/box`, `scripts/*.sh`, and `setup.sh`
+- **No workflow interpolates `${{ }}` into a `run:` block** (`scripts/check-workflow-injection.py`). Actions splices those into the script *source* before bash parses it, so an expression carrying untrusted text is a shell injection — bind it in `env:` and use `"$VAR"` instead. This is a real bug that shipped here, not a hypothetical
+- **The AUR diff validator still rejects the known attack shapes** (`scripts/test-aur-validator.sh`) — command substitution and appended commands on `pkgver=`/checksum lines, checksums downgraded to `SKIP`, added scriptlets, symlinked or executable PKGBUILDs, hostile filenames
+
+The `build-base` and `build-boxes` jobs `needs: lint`, so a failed lint cannot coexist with newly published images.
 
 ## Local checks
 
@@ -203,6 +213,12 @@ bash -c '
 
 # Static analysis (CI runs this at --severity=error)
 shellcheck --severity=error --shell=bash bin/box scripts/*.sh setup.sh
+
+# No workflow may interpolate ${{ }} into a run: block.
+python3 scripts/check-workflow-injection.py
+
+# The AUR diff validator must still reject every known attack shape.
+bash scripts/test-aur-validator.sh
 ```
 
 ## Shell Script Style

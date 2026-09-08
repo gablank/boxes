@@ -143,6 +143,16 @@ jobs:
           # Tighten the threshold once those patterns carry inline disables.
           shellcheck --severity=error --shell=bash bin/box scripts/*.sh setup.sh
 
+      # --- Security regressions from the 2026-09-08 review -------------------
+      # Both run read-only, in a job with no write token, and neither touches
+      # the network or executes any candidate PKGBUILD.
+
+      - name: No Actions expressions inside run: blocks
+        run: python3 scripts/check-workflow-injection.py
+
+      - name: AUR diff validator rejects the known attack shapes
+        run: bash scripts/test-aur-validator.sh
+
   changes:
     runs-on: ubuntu-latest
     outputs:
@@ -177,14 +187,25 @@ jobs:
             dev:
               - 'dev/**'
 
+      # Values arrive through env:, never spliced into the script text. These
+      # particular ones are booleans GitHub generates, so they are not an
+      # injection risk today -- but scripts/check-workflow-injection.py enforces
+      # the rule repo-wide, because the next `${{ }}` someone adds here might
+      # not be. See the header of aur-bump.yml.
       - name: Compute build flags
         id: result
+        env:
+          FORCE: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+          FILTER_BASE: ${{ steps.filter.outputs.base }}
+          FILTER_PRIV: ${{ steps.filter.outputs.priv }}
+          FILTER_WORK: ${{ steps.filter.outputs.work }}
+          FILTER_DEV: ${{ steps.filter.outputs.dev }}
         run: |
-          force="${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}"
-          base="${{ steps.filter.outputs.base }}"
-          priv="${{ steps.filter.outputs.priv }}"
-          work="${{ steps.filter.outputs.work }}"
-          dev="${{ steps.filter.outputs.dev }}"
+          force="$FORCE"
+          base="$FILTER_BASE"
+          priv="$FILTER_PRIV"
+          work="$FILTER_WORK"
+          dev="$FILTER_DEV"
 
           [[ "$force" == "true" ]] && base=true && priv=true && work=true && dev=true
 
@@ -197,7 +218,9 @@ jobs:
           echo "box_matrix=[$(IFS=,; echo "${boxes[*]}")]" >> "$GITHUB_OUTPUT"
 
   build-base:
-    needs: changes
+    # `lint` is a gate, not decoration: without it a failing lint could coexist
+    # with newly published images (security review finding 6).
+    needs: [lint, changes]
     if: needs.changes.outputs.build_base == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -229,7 +252,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=base
 
   build-boxes:
-    needs: [changes, build-base]
+    needs: [lint, changes, build-base]
     if: always() && !failure() && !cancelled() && needs.changes.outputs.box_matrix != '[]'
     runs-on: ubuntu-latest
     permissions:

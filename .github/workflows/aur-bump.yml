@@ -1,8 +1,6 @@
 name: AUR bump
 
-# Re-vendors every AUR PKGBUILD and opens a PR with the result. The mechanical
-# half of the audit in aur/README.md runs here as a hard gate; the judgement
-# half is left to the review on the PR.
+# Re-vendors every AUR PKGBUILD and opens a PR with the result.
 #
 # 03:00 UTC starts a chain that must finish before 07:00 Norwegian time: vet,
 # merge, image rebuild, then the host's hourly `box pull-all`. In CEST that
@@ -10,23 +8,45 @@ name: AUR bump
 # pull to catch it. Note this shares its slot with build.yml's nightly cron;
 # they serialize on the `build-images` concurrency group, so a nightly build
 # still running when this PR merges delays the merge's build behind it.
+#
+# STRUCTURE, and why it is two jobs. Everything this workflow processes --
+# PKGBUILD contents, and the *names* of the files in them -- is written by AUR
+# package maintainers, i.e. by people outside this repository. The 2026-09-08
+# security review found that treating that as trusted input gave arbitrary code
+# execution in a job holding contents/pull-requests/statuses write, through a
+# vendored filename interpolated into a `run:` script. So:
+#
+#   audit    handles untrusted content and holds NO write token
+#            (`contents: read`, `persist-credentials: false`). It cannot push,
+#            open a PR, or post a status even if it is compromised.
+#   publish  holds the write tokens, runs only when audit says PASS, and
+#            re-validates the patch it receives rather than trusting the verdict.
+#
+# Two rules keep that boundary real, and both are load-bearing:
+#
+#   1. NEVER write a `${{ ... }}` expression inside a `run:` block. Actions
+#      substitutes those into the script *source* before bash parses it, so any
+#      expression carrying untrusted text is a shell injection. Pass values
+#      through `env:` and print them with `printf '%s\n' "$VAR"`, or write them
+#      to a file and `cat` it. The only expressions below are in `if:`, `env:`
+#      and `with:`.
+#   2. Untrusted text never becomes a step *output*. Step outputs are what get
+#      interpolated. Findings go to files under $RUNNER_TEMP; outputs carry only
+#      fixed words this workflow chose itself (true/false/PASS/FAIL).
+#
+# scripts/validate-aur-diff.py is the content gate, and it fails closed: every
+# changed line must match an exact literal shape. It replaces the old "strip
+# lines starting with pkgver=/sha256sums= and read the rest" filter, which
+# reported a diff containing `pkgver=1.2.3$(...)` as routine. Its adversarial
+# regression tests run in build.yml's lint job; see scripts/test-aur-validator.sh.
 
 on:
-  # PAUSED 2026-09-08 pending SECURITY-REVIEW.md findings 1-3. Finding 1 is a
-  # shell injection through vendored filenames that executes in the "Build audit
-  # report" step -- i.e. BEFORE any PR exists and before the gate-failure abort,
-  # in a job holding contents/pull-requests/statuses write. Pausing only the
-  # merge does not help; the schedule itself has to be off until that is fixed.
-  # Re-enable by uncommenting, once finding 1 has a regression test.
-  # schedule:
-  #   - cron: "0 3 * * *"
+  schedule:
+    - cron: "0 3 * * *"
   workflow_dispatch:
 
-permissions:
-  contents: write
-  pull-requests: write
-  # For the aur-bump/eligible commit status below.
-  statuses: write
+# No ambient permissions; each job asks for exactly what it needs.
+permissions: {}
 
 # Never let two bumps race for the same branch name.
 concurrency:
@@ -34,10 +54,22 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  bump:
+  # ---------------------------------------------------------------------------
+  # Untrusted half. Read-only token, no persisted credentials.
+  # ---------------------------------------------------------------------------
+  audit:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.detect.outputs.changed }}
+      verdict: ${{ steps.verdict.outputs.verdict }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Do not leave a push credential in .git/config for the job that
+          # handles upstream-controlled content.
+          persist-credentials: false
 
       - name: Re-vendor all AUR PKGBUILDs
         run: bash scripts/vendor-aur.sh --all
@@ -53,31 +85,26 @@ jobs:
             echo "All vendored PKGBUILDs are already current."
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
-            git diff --cached --name-only -- aur/
+            # -z, then printed one per line: never word-split a filename.
+            git diff --cached --name-only -z -- aur/ | tr '\0' '\n'
           fi
 
-      # --- Gate 1: only PKGBUILDs and the manifest may change -----------------
-      # A bump that also rewrites an *.install, *.sh or *.patch is the shape a
-      # poisoned package takes (aur/README.md, audit step 1).
-      - name: Gate - changed files are PKGBUILDs and the manifest only
-        id: gate_scope
+      # --- Gate 1: the change is mechanically validatable as a routine bump ---
+      # Paths, file modes and every changed line. See the script's docstring for
+      # why prefix-stripping was unsafe.
+      - name: Gate - changes validate as a routine version bump
+        id: gate_validate
         if: steps.detect.outputs.changed == 'true'
         run: |
           set -euo pipefail
-          unexpected="$(git diff --cached --name-only -- aur/ \
-            | grep -vE '^aur/[^/]+/PKGBUILD$|^aur/manifest\.tsv$' || true)"
-          if [[ -n "$unexpected" ]]; then
-            {
-              echo "verdict=FAIL"
-              echo "detail<<EOF"
-              echo "$unexpected"
-              echo "EOF"
-            } >> "$GITHUB_OUTPUT"
-            echo "::warning::non-PKGBUILD files changed in this bump"
-            printf '%s\n' "$unexpected"
-          else
+          if python3 scripts/validate-aur-diff.py --repo . \
+               > "$RUNNER_TEMP/validate.txt" 2>&1; then
             echo "verdict=PASS" >> "$GITHUB_OUTPUT"
+          else
+            echo "verdict=FAIL" >> "$GITHUB_OUTPUT"
           fi
+          # `cat` never interprets its input as script.
+          cat "$RUNNER_TEMP/validate.txt"
 
       # --- Gate 2: vendored copies really are upstream at the pinned commits --
       # Catches a local copy that drifted from what manifest.tsv claims
@@ -92,6 +119,10 @@ jobs:
           tmp="$(mktemp -d)"; R="$PWD"; bad=()
           while IFS=$'\t' read -r base commit _; do
             [[ -n "$base" ]] || continue
+            # Check the row's shape before either value reaches git.
+            if ! [[ "$base" =~ ^[a-z0-9][a-z0-9._+-]*$ && "$commit" =~ ^[0-9a-f]{40}$ ]]; then
+              bad+=("$base (malformed manifest row)"); continue
+            fi
             if ! git clone --quiet "https://aur.archlinux.org/$base.git" "$tmp/$base"; then
               bad+=("$base (clone failed)"); continue
             fi
@@ -105,88 +136,109 @@ jobs:
             fi
           done < aur/manifest.tsv
           rm -rf "$tmp"
+          : > "$RUNNER_TEMP/provenance.txt"
           if [[ ${#bad[@]} -gt 0 ]]; then
-            {
-              echo "verdict=FAIL"
-              echo "detail<<EOF"
-              printf '%s\n' "${bad[@]}"
-              echo "EOF"
-            } >> "$GITHUB_OUTPUT"
-            echo "::warning::provenance check failed"
-            printf '%s\n' "${bad[@]}"
+            printf '%s\n' "${bad[@]}" > "$RUNNER_TEMP/provenance.txt"
+            echo "verdict=FAIL" >> "$GITHUB_OUTPUT"
+            cat "$RUNNER_TEMP/provenance.txt"
           else
             echo "verdict=PASS" >> "$GITHUB_OUTPUT"
           fi
 
-      # --- Report: the residue a human (or Claude) actually has to read -------
-      - name: Build audit report
-        id: report
-        if: steps.detect.outputs.changed == 'true'
+      # Abort BEFORE the report is built. In the reviewed version the report ran
+      # first, so the step that detected a hostile file was also the step that
+      # executed it -- the payload fired on the failure path. Nothing downstream
+      # of here ever sees input that did not validate.
+      - name: Fail before reporting if a gate failed
+        if: >-
+          steps.detect.outputs.changed == 'true' &&
+          (steps.gate_validate.outputs.verdict == 'FAIL' ||
+           steps.gate_provenance.outputs.verdict == 'FAIL')
         run: |
           set -euo pipefail
           {
+            echo "## AUR bump: audit gates failed -- no PR was opened"
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/validate.txt" 2>/dev/null || true
+            cat "$RUNNER_TEMP/provenance.txt" 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::a mechanical audit gate failed; no PR was opened"
+          exit 1
+
+      # Only reached when both gates passed, so this cannot report PASS for a
+      # run that failed one.
+      - name: Record the audit verdict
+        id: verdict
+        if: steps.detect.outputs.changed == 'true'
+        run: echo "verdict=PASS" >> "$GITHUB_OUTPUT"
+
+      # --- Report: what a reader still has to judge --------------------------
+      # Only reached when every changed line already validated, so the loops
+      # below cannot meet a hostile path. The residual-diff section is gone: the
+      # PR now carries the FULL diff, because deciding which lines are "routine"
+      # is exactly the judgement that was wrong.
+      - name: Build audit report
+        if: steps.detect.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          : > "$RUNNER_TEMP/raw-before.txt"; : > "$RUNNER_TEMP/raw-after.txt"
+          {
             echo "## Vendored AUR bump"
             echo
-            echo "Generated by \`.github/workflows/aur-bump.yml\`. The mechanical"
-            echo "checks below already ran; what needs a reader is the residual"
-            echo "diff and the source hosts."
+            echo "Generated by \`.github/workflows/aur-bump.yml\`. Every changed"
+            echo "line passed \`scripts/validate-aur-diff.py\`, which admits only"
+            echo "literal version, checksum and manifest updates. Read the full"
+            echo "diff below anyway: validation proves the change is *literal*,"
+            echo "not that the new upstream release is trustworthy."
             echo
             echo "### Mechanical gates"
             echo
             echo "| Check | Result |"
             echo "|---|---|"
-            echo "| Only PKGBUILDs + manifest changed | ${{ steps.gate_scope.outputs.verdict }} |"
-            echo "| Vendored copies match pinned upstream commits | ${{ steps.gate_provenance.outputs.verdict }} |"
+            echo "| Changed lines validate as a routine bump | PASS |"
+            echo "| Vendored copies match pinned upstream commits | PASS |"
             echo
-            if [[ "${{ steps.gate_scope.outputs.verdict }}" == "FAIL" ]]; then
-              echo "**Unexpected files changed:**"; echo
-              echo '```'; echo "${{ steps.gate_scope.outputs.detail }}"; echo '```'; echo
-            fi
-            if [[ "${{ steps.gate_provenance.outputs.verdict }}" == "FAIL" ]]; then
-              echo "**Provenance failures:**"; echo
-              echo '```'; echo "${{ steps.gate_provenance.outputs.detail }}"; echo '```'; echo
-            fi
 
             echo "### Version changes"
             echo
             echo '```'
-            for p in $(git diff --cached --name-only -- 'aur/*/PKGBUILD' | cut -d/ -f2); do
-              old="$(git show "HEAD:aur/$p/PKGBUILD" 2>/dev/null | grep -m1 '^pkgver=' || echo 'pkgver=(new)')"
-              new="$(grep -m1 '^pkgver=' "aur/$p/PKGBUILD" || echo 'pkgver=(none)')"
+            while IFS= read -r -d '' f; do
+              p="${f#aur/}"; p="${p%/PKGBUILD}"
+              old="$(git show "HEAD:$f" 2>/dev/null | grep -m1 '^pkgver=' || echo 'pkgver=(new)')"
+              new="$(grep -m1 '^pkgver=' "$f" || echo 'pkgver=(none)')"
               printf '%-28s %s -> %s\n' "$p" "${old#pkgver=}" "${new#pkgver=}"
-            done
+              git show "HEAD:$f" 2>/dev/null >> "$RUNNER_TEMP/raw-before.txt" || true
+              cat "$f" >> "$RUNNER_TEMP/raw-after.txt"
+            done < <(git diff --cached --name-only -z -- 'aur/*/PKGBUILD')
             echo '```'
             echo
 
-            echo "### Residual diff (routine version/checksum lines stripped)"
-            echo
-            echo "Whatever appears here is the actual change in build behaviour."
+            echo "### Full diff"
             echo
             echo '```diff'
-            git diff --cached -U0 -- 'aur/*/PKGBUILD' aur/manifest.tsv \
-              | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' \
-              | grep -viE "^[+-]\s*(pkgver=|_commit=|sha[0-9]+sums|md5sums)" \
-              | grep -vE "^[+-]\s*'[0-9a-f]{40,128}'?\)?$" \
-              | grep -vE '^[+-][a-z0-9-]+\s+[0-9a-f]{40}\s+[0-9]{4}-' \
-              || echo '(nothing but routine version/checksum/manifest lines)'
+            git diff --cached --no-ext-diff --no-textconv -- aur/
             echo '```'
             echo
 
             echo "### Source host comparison"
             echo
-            echo "Every host must be the software vendor's own. A new host, an IP"
-            echo "literal, or a shortener is stop-and-investigate."
+            echo "Every host must be the software vendor's own, and a permitted"
+            echo "hostname is not enough: \`github.com\` and"
+            echo "\`gitlab.archlinux.org\` are shared hosting, so check the exact"
+            echo "repository and path too."
             echo
             echo '```'
             urls() {
               grep -ohE 'https?://[^"'"'"' )]+' \
                 | sed -E 's/[0-9]+\.[0-9]+[0-9.]*/VER/g; s/[0-9a-f]{40}/COMMIT/g' | sort -u
             }
-            pkgs="$(git diff --cached --name-only -- 'aur/*/PKGBUILD' | cut -d/ -f2)"
-            for p in $pkgs; do git show "HEAD:aur/$p/PKGBUILD" 2>/dev/null || true; done | urls > "$RUNNER_TEMP/before.txt"
-            for p in $pkgs; do cat "aur/$p/PKGBUILD"; done | urls > "$RUNNER_TEMP/after.txt"
-            diff "$RUNNER_TEMP/before.txt" "$RUNNER_TEMP/after.txt" || true
-            if diff -q "$RUNNER_TEMP/before.txt" "$RUNNER_TEMP/after.txt" >/dev/null; then echo '(no change in source hosts)'; fi
+            urls < "$RUNNER_TEMP/raw-before.txt" > "$RUNNER_TEMP/before.txt" || true
+            urls < "$RUNNER_TEMP/raw-after.txt"  > "$RUNNER_TEMP/after.txt"  || true
+            if diff "$RUNNER_TEMP/before.txt" "$RUNNER_TEMP/after.txt"; then
+              echo '(no change in source hosts)'
+            fi
             echo '```'
             echo
 
@@ -196,39 +248,82 @@ jobs:
             echo
             echo '```'
             found=0
-            for p in $pkgs; do
-              old="$(git show "HEAD:aur/$p/PKGBUILD" 2>/dev/null | grep -m1 '^pkgver=' | cut -d= -f2- || true)"
+            while IFS= read -r -d '' f; do
+              old="$(git show "HEAD:$f" 2>/dev/null | grep -m1 '^pkgver=' | cut -d= -f2- || true)"
               [[ -n "$old" ]] || continue
-              hits="$(grep -rn --fixed-strings "$old" . \
+              hits="$(grep -rn --fixed-strings -- "$old" . \
                 --exclude-dir=.git --exclude-dir=aur 2>/dev/null || true)"
-              if [[ -n "$hits" ]]; then found=1; printf '%s: %s\n%s\n' "$p" "$old" "$hits"; fi
-            done
+              if [[ -n "$hits" ]]; then
+                found=1
+                printf '%s: %s\n%s\n' "${f#aur/}" "$old" "$hits"
+              fi
+            done < <(git diff --cached --name-only -z -- 'aur/*/PKGBUILD')
             [[ $found -eq 0 ]] && echo '(none)'
             echo '```'
           } > "$RUNNER_TEMP/report.md"
-          cat "$RUNNER_TEMP/report.md"
           cat "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
+          git diff --cached --no-ext-diff --no-textconv -- aur/ > "$RUNNER_TEMP/bump.patch"
 
-      # A failed gate aborts here, before any PR exists. Opening a labelled PR and
-      # relying on the vetter to honour the label would make the scope guarantee
-      # depend on a model's compliance; refusing to create the PR at all makes it
-      # depend on the workflow. An out-of-scope bump can never become mergeable.
-      - name: Fail the run if a gate failed
-        if: >-
-          steps.detect.outputs.changed == 'true' &&
-          (steps.gate_scope.outputs.verdict == 'FAIL' ||
-           steps.gate_provenance.outputs.verdict == 'FAIL')
+      - name: Hand the validated change to the publisher
+        if: steps.detect.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aur-bump
+          path: |
+            ${{ runner.temp }}/bump.patch
+            ${{ runner.temp }}/report.md
+          retention-days: 7
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # Trusted half. Holds the write tokens; never processes unvalidated content.
+  # ---------------------------------------------------------------------------
+  publish:
+    needs: audit
+    # Restricted to main so a workflow_dispatch from another branch cannot
+    # publish, and gated on the audit job's verdict output.
+    if: >-
+      needs.audit.outputs.changed == 'true' &&
+      needs.audit.outputs.verdict == 'PASS' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      # For the aur-bump/eligible commit status below.
+      statuses: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: aur-bump
+          path: ${{ runner.temp }}/incoming
+
+      # Trust the artifact no more than the job that produced it. A verdict is a
+      # claim; this re-derives it from the patch itself, in a clean checkout,
+      # without executing any of the content.
+      - name: Re-validate the received change
         run: |
-          echo "::error::a mechanical audit gate failed; no PR was opened"
-          echo "scope=${{ steps.gate_scope.outputs.verdict }} provenance=${{ steps.gate_provenance.outputs.verdict }}"
-          echo "The full report is in this run's job summary."
-          exit 1
+          set -euo pipefail
+          git apply --whitespace=nowarn "$RUNNER_TEMP/incoming/bump.patch"
+          git add -A
+
+          outside="$(git diff --cached --name-only -z | tr '\0' '\n' \
+            | grep -vE '^aur/' || true)"
+          if [[ -n "$outside" ]]; then
+            echo "::error::patch touched paths outside aur/"
+            printf '%s\n' "$outside"
+            exit 1
+          fi
+
+          python3 scripts/validate-aur-diff.py --repo .
 
       - name: Commit, push, and open the PR
         id: pr
-        if: steps.detect.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           branch="aur/bump-$(date -u +%Y-%m-%d)"
@@ -239,38 +334,52 @@ jobs:
           {
             echo "aur: Upgrade"
             echo
-            for p in $(git diff --cached --name-only -- 'aur/*/PKGBUILD' | cut -d/ -f2); do
-              old="$(git show "HEAD:aur/$p/PKGBUILD" 2>/dev/null | grep -m1 '^pkgver=' | cut -d= -f2- || echo '(new)')"
-              new="$(grep -m1 '^pkgver=' "aur/$p/PKGBUILD" | cut -d= -f2- || echo '(none)')"
-              echo "$p: $old -> $new"
-            done
+            while IFS= read -r -d '' f; do
+              p="${f#aur/}"; p="${p%/PKGBUILD}"
+              old="$(git show "HEAD:$f" 2>/dev/null | grep -m1 '^pkgver=' | cut -d= -f2- || echo '(new)')"
+              new="$(grep -m1 '^pkgver=' "$f" | cut -d= -f2- || echo '(none)')"
+              printf '%s: %s -> %s\n' "$p" "$old" "$new"
+            done < <(git diff --cached --name-only -z -- 'aur/*/PKGBUILD')
           } > "$RUNNER_TEMP/commit.txt"
           git commit -q -F "$RUNNER_TEMP/commit.txt"
           git push -q origin "$branch"
+
+          head_sha="$(git rev-parse HEAD)"
+
+          # The reviewer must merge this exact commit. If the branch moves after
+          # review, the merge has to fail rather than pick up the new tip.
+          {
+            cat "$RUNNER_TEMP/incoming/report.md"
+            echo
+            echo "### Merge binding"
+            echo
+            printf 'Reviewed head SHA: `%s`\n\n' "$head_sha"
+            echo "Merge only this SHA. If the branch has moved since review, the"
+            echo "change under review is not the change being merged -- re-review"
+            echo "instead of merging."
+          } > "$RUNNER_TEMP/body.md"
 
           gh label create aur-bump     --color 0e8a16 --force --description "Automated AUR PKGBUILD bump" >/dev/null 2>&1 || true
           gh label create needs-review --color d93f0b --force --description "Vetting found a problem; do not merge unread" >/dev/null 2>&1 || true
 
           url="$(gh pr create \
             --title "aur: Upgrade" \
-            --body-file "$RUNNER_TEMP/report.md" \
+            --body-file "$RUNNER_TEMP/body.md" \
             --base main --head "$branch" \
             --label aur-bump)"
           echo "Opened $url"
           echo "url=$url" >> "$GITHUB_OUTPUT"
 
-          # Proof of provenance that GitHub itself can enforce.
+          # Proof of provenance that GitHub itself can enforce, posted on the
+          # exact reviewed commit.
           #
-          # Everything else separating this PR from a stranger's -- the author,
-          # the head repo, the label -- is checked by the vetting model, so a
-          # prompt injection that talks it past those checks bypasses them. This
-          # status is different: mark `aur-bump/eligible` as a required status
-          # check in branch protection and GitHub refuses to merge any PR that
-          # lacks it, whatever the model decides. Only this workflow can post it,
-          # and only for a branch it just created; posting a status needs write
-          # access, which no outside contributor has.
-          head_sha="$(git rev-parse HEAD)"
-          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
+          # WHAT THIS IS AND IS NOT. Made a required status check, GitHub refuses
+          # to merge a PR lacking it -- for identities that cannot bypass the
+          # rule. It is not exclusive to this workflow: any writer with statuses
+          # permission can post the same context, so bind an expected
+          # integration in the ruleset and audit who holds bypass rights. See
+          # aur/README.md.
+          gh api --method POST "repos/${REPO}/statuses/${head_sha}" \
             -f state=success \
             -f context='aur-bump/eligible' \
             -f description='Branch was created by the nightly AUR bump workflow' >/dev/null
