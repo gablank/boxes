@@ -15,6 +15,22 @@ on:
   schedule:
     - cron: "0 3 * * *"
   workflow_dispatch:
+    inputs:
+      rewind:
+        description: >-
+          Testing only. A vendored pkgbase (e.g. claude-code) to roll back to its
+          previous committed state before vendoring, so the run produces a real
+          bump and exercises the gates and the report on a day when nothing
+          moved. Never opens a PR: rewinding and re-vendoring is net-zero
+          against main, so the PR would be empty.
+        required: false
+        default: ""
+      dry_run:
+        description: >-
+          Testing only. Run every check and publish the report to the job
+          summary, but do not commit, push, or open a PR.
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -30,6 +46,38 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Manufacturing a real bump is the only way to exercise the interesting
+      # paths on a day when every vendored package is already current. Rolls one
+      # package back to its previous committed state, including its manifest row
+      # -- rewinding the whole manifest would leave every *other* package's
+      # pinned commit disagreeing with its vendored copy, failing gate 2 for a
+      # reason that has nothing to do with the test.
+      - name: Rewind one package (manual test runs only)
+        if: inputs.rewind != ''
+        run: |
+          set -euo pipefail
+          pkg="${{ inputs.rewind }}"
+          [[ -d "aur/$pkg" ]] || { echo "no such vendored package: aur/$pkg"; exit 1; }
+          prev="$(git log -n 1 --skip 1 --format=%H -- "aur/$pkg/PKGBUILD")"
+          [[ -n "$prev" ]] || { echo "no earlier commit touches aur/$pkg/PKGBUILD"; exit 1; }
+          echo "Rewinding aur/$pkg to its state at $prev"
+          git checkout "$prev" -- "aur/$pkg/"
+          old_row="$(git show "$prev:aur/manifest.tsv" | grep -P "^${pkg}\t" || true)"
+          if [[ -n "$old_row" ]]; then
+            tmpf="$(mktemp)"
+            grep -vP "^${pkg}\t" aur/manifest.tsv > "$tmpf"
+            printf '%s\n' "$old_row" >> "$tmpf"
+            sort "$tmpf" > aur/manifest.tsv
+          fi
+          # The rewind must be COMMITTED, not just staged. Everything downstream
+          # diffs against HEAD, and re-vendoring restores current upstream -- so
+          # with the rewind uncommitted the tree would come back identical to
+          # HEAD and the run would report no changes at all.
+          git -c user.name=github-actions[bot] \
+              -c user.email=41898282+github-actions[bot]@users.noreply.github.com \
+              commit -qam "test: rewind $pkg to $prev"
+          echo "HEAD now at $(grep -m1 '^pkgver=' "aur/$pkg/PKGBUILD")"
 
       - name: Re-vendor all AUR PKGBUILDs
         run: bash scripts/vendor-aur.sh --all
@@ -199,10 +247,11 @@ jobs:
             echo '```'
           } > "$RUNNER_TEMP/report.md"
           cat "$RUNNER_TEMP/report.md"
+          cat "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Commit, push, and open the PR
         id: pr
-        if: steps.detect.outputs.changed == 'true'
+        if: steps.detect.outputs.changed == 'true' && !inputs.dry_run && inputs.rewind == ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
