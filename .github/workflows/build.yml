@@ -165,6 +165,11 @@ jobs:
               - 'scripts/**'
               - 'local-bin/**'
               - 'aur/**'
+              # aur/ docs do reach the image -- Containerfile.base COPYs the whole
+              # tree -- but it is deleted again before the final image, so a
+              # docs-only edit rebuilds base and every box to produce something
+              # functionally identical. Negation must come after 'aur/**'.
+              - '!aur/*.md'
             priv:
               - 'priv/**'
             work:

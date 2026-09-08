@@ -245,6 +245,7 @@ Follow the complete checklist in `.agents/skills/adding-a-box/SKILL.md`. It cove
 **CI path filter maintenance:** The `changes` job in `.github/workflows/build.yml` uses `dorny/paths-filter` to detect changes and builds a dynamic `box_matrix` JSON array consumed by `build-boxes` via `fromJson`. It must be kept in sync with the repo layout:
 - New box → add a filter entry for `<name>/**` and wire it into the `boxes` array in the `Compute build flags` step
 - New shared directory (e.g. a new top-level dir copied into all images) → add it to the `base:` filter
+- The `base:` filter ends with `- '!aur/*.md'`, so editing `aur/README.md` alone does not rebuild anything. `Containerfile.base` does `COPY aur/ /tmp/aur/` and later `rm -rf /tmp/aur`, so those docs never reach the final image. Keep the negation **after** `'aur/**'` — paths-filter applies the patterns in order
 - Renamed or moved directory → update the matching filter entry
 
 Whenever you add something to CI that is gated by a path filter, document what must be updated here and in the relevant skill.
