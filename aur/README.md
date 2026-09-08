@@ -54,6 +54,11 @@ This re-clones from the AUR, prints a diff against the committed copy so you can
 **review it before committing**, updates the files and `manifest.tsv`. Read the
 diff, then `git add aur/ && git commit`. The wrapper is `scripts/vendor-aur.sh`.
 
+The same re-vendoring also runs nightly at 03:00 UTC in
+`.github/workflows/aur-bump.yml`, which runs the mechanical half of the audit
+below as a hard gate and opens a PR carrying the report. The manual command
+stays for one-off bumps and for bumping a single stale package mid-day.
+
 ## Auditing a `vendor-aur` bump
 
 The vendoring is only worth anything if somebody actually reads the diff. A
@@ -62,6 +67,10 @@ new `manifest.tsv` rows — anything else deserves a closer look. Work through
 these from the repo root with the re-vendored changes unstaged. If the bump is
 already committed, add the range to each `git diff`/`git show` (`HEAD~1..HEAD`,
 `HEAD~1:aur/...`).
+
+Steps 1 and 4 are mechanical and run automatically in `aur-bump.yml`, which
+fails the run and labels the PR `needs-review` if either trips. Steps 2, 3 and 5
+need a reader; the workflow pre-computes their inputs into the PR body.
 
 **1. Only PKGBUILDs and the manifest should have changed.** A bump that also
 rewrites an `*.install`, `*.sh` or `*.patch` is the shape a poisoned package
