@@ -12,6 +12,14 @@ Anything you edit in `/etc/ssh/sshd_config` inside a box is lost on the next `bo
 
 Every image ships [`host-spawn`](https://github.com/1player/host-spawn) at a pinned version. distrobox needs it to run commands back on the host (`distrobox-host-exec`) and to import the host's display variables in its login profile, but it ships no binary of its own — it offers to download one into the container instead, which every recreate throws away. Baking it in keeps `command not found: host-spawn` out of your login shells.
 
+These environments share trusted access to the host. Separate homes and tailnets
+do not provide a security boundary between work and private software. The host
+Podman socket, host session bus, and rootful containers make image integrity
+especially important. The passwordless host Podman permission below is also
+effectively permission to obtain host root through container management.
+See [the security review](SECURITY-REVIEW.md) for the September 2026 audit,
+confirmed AUR automation weaknesses, and recommended fixes.
+
 ## Boxes
 
 | Box | Purpose |
