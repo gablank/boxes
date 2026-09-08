@@ -97,6 +97,9 @@ setup.sh                    One-shot setup script for new users / forks
                             routine vets the PR — its prompt lives outside this repo, see "Where the
                             vetter lives" in aur/README.md
   CODEOWNERS                Scope guard: everything needs owner review except aur/ (needs branch protection to bite)
+  aur-vet-prompt.md         Reviewed source of the vetting routine's instructions. The routine holds merge
+                            rights, so its prompt is reviewed here and deployed to the routine — edit here
+                            first, then deploy; the two copies can drift and CI cannot check them
 .agents/
   rules/                    Always-active agent rules (core.mdc, self-improve.mdc)
   skills/                   Topic skills, one SKILL.md per topic

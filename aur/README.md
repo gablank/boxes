@@ -106,16 +106,17 @@ same immutable head SHA.
 
 **Where the vetter lives.** It is a Claude Code *cloud routine* named "Vet
 nightly AUR bump PR", woken by a webhook on every `pull_request` event in this
-repo, not by a schedule. Its prompt is stored in the routine, **not in this
-repository**, so it is not covered by the usual documentation audit; edit it at
-<https://claude.ai/code/routines> or with the `RemoteTrigger` tool, and re-read
-it whenever the audit above changes. Correcting this file does not correct the
-routine. Two properties of that environment shape the prompt and are easy to
-rediscover the hard way: `gh` is not installed and no GitHub credential is
-present, so every GitHub read and write goes through the `mcp__github__*` MCP
-tools (loaded on demand via `ToolSearch`); and the routine only has `Bash`,
-`Read`, `Grep`, `Glob` and `PushNotification` locally, which reach the checkout
-but never GitHub.
+repo, not by a schedule. Its instructions are reviewed here as
+[`.github/aur-vet-prompt.md`](../.github/aur-vet-prompt.md) and *deployed* into
+the routine, which is where they actually execute — change that file in a pull
+request first, then deploy. The two copies can drift and nothing in CI can read
+the deployed one back, so re-read both whenever the audit above changes:
+correcting this file does not correct the routine. Two properties of that
+environment shape the prompt and are easy to rediscover the hard way: `gh` is
+not installed and no GitHub credential is present, so every GitHub read and
+write goes through the `mcp__github__*` MCP tools (loaded on demand via
+`ToolSearch`); and the routine only has `Bash`, `Read`, `Grep`, `Glob` and
+`PushNotification` locally, which reach the checkout but never GitHub.
 
 **The webhook has never been observed to fire.** On 2026-09-08 neither a
 bot-authored PR (#1, labelled `aur-bump`) nor a human-authored one (#2) woke the
