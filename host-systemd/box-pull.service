@@ -1,0 +1,24 @@
+# Pre-fetch box images so `box upgrade` is instant instead of a multi-GB wait.
+# Installed on the HOST, not in a box: bin/box drives the host's podman, which
+# is not reachable from inside a container.
+#
+# ExecStart assumes the checkout lives in the devbox home. Point it at your own
+# path if it does not.
+#
+# Pulling only downloads; it never touches a running container. `box upgrade`
+# stays a deliberate, manual step.
+
+[Unit]
+Description=Pull latest box images from the registry
+Documentation=https://github.com/gablank/boxes
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/distrobox/devbox/home/boxes/bin/box pull-all
+# A multi-GB pull over a slow link must not be killed mid-layer.
+TimeoutStartSec=1800
+# Keep a background pull off the back of whatever the user is doing.
+Nice=10
+IOSchedulingClass=idle

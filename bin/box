@@ -6,7 +6,7 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
 REGISTRY="ghcr.io"
 
-_BOX_COMMANDS=(init list enter rescue set-image build upgrade assemble assemble-all pull stop status doctor logs images vendor-aur completions help)
+_BOX_COMMANDS=(init list enter rescue set-image build upgrade assemble assemble-all pull pull-all stop status doctor logs images vendor-aur completions help)
 _BOX_COMMANDS_WITH_BOX=(enter rescue set-image build upgrade assemble pull stop status doctor logs images)
 
 _detect_owner() {
@@ -68,6 +68,7 @@ ${BOLD}COMMANDS${RESET}
     assemble    [-v] <box>   Recreate box from box.toml. ${RED}Stops the box.${RESET} -v shows container logs.
     assemble-all             Recreate all boxes. ${RED}Stops all boxes.${RESET}
     pull        <box> [tag]  Pull image from registry (default: current tag). Does not restart.
+    pull-all    [tag]        Pull images for all boxes (default: each box.toml's tag). Does not restart.
     stop        <box>        Stop a box
     status      <box>        Show detailed box info and build metadata
     doctor      [box]        Check running boxes for silent drift (default: all)
@@ -411,8 +412,24 @@ cmd_pull() {
         image="${image%:*}:${tag}"
     fi
     printf "${CYAN}Pulling %s...${RESET}\n" "$image"
-    $podman_cmd pull "$image"
+    if ! $podman_cmd pull "$image"; then
+        printf "${RED}Pull failed: %s${RESET}\n" "$image" >&2
+        return 1
+    fi
     printf "${GREEN}Done.${RESET}\n"
+}
+
+cmd_pull_all() {
+    local box tag="${1:-}"
+    local failed=()
+    for box in $(discover_boxes); do
+        cmd_pull "$box" "$tag" || failed+=("$box")
+        echo ""
+    done
+    if [[ ${#failed[@]} -gt 0 ]]; then
+        printf "${RED}Failed to pull: %s${RESET}\n" "${failed[*]}" >&2
+        return 1
+    fi
 }
 
 cmd_stop() {
@@ -847,6 +864,7 @@ _box_commands() {
         'assemble:recreate box from box.toml (stops the box)'
         'assemble-all:recreate all boxes (stops all boxes)'
         'pull:pull image from registry, does not restart'
+        'pull-all:pull images for all boxes, does not restart'
         'rescue:enter box with minimal init (skips hooks)'
         'stop:stop a box'
         'status:show detailed box info and build metadata'
@@ -976,6 +994,9 @@ case "$command" in
     pull)
         [[ $# -ge 1 ]] || { printf "${RED}Usage: box pull <box> [tag]${RESET}\n" >&2; exit 1; }
         cmd_pull "$1" "${2:-}"
+        ;;
+    pull-all)
+        cmd_pull_all "${1:-}"
         ;;
     stop)
         [[ $# -ge 1 ]] || { printf "${RED}Usage: box stop <box>${RESET}\n" >&2; exit 1; }

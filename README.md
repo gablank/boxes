@@ -72,6 +72,7 @@ box upgrade     <box>           Set tag to latest, pull, and reassemble (stops t
 box assemble    [-v] <box>      Create/recreate box from current box.toml (stops the box)
 box assemble-all                Assemble all boxes (stops all boxes)
 box pull        <box> [tag]     Pull image without rebuilding (default: current tag in box.toml)
+box pull-all    [tag]           Pull images for all boxes (default: each box.toml's tag); does not restart
 box stop        <box>           Stop a box
 box status      <box>           Show detailed box info and build metadata
 box doctor      [box]           Check running boxes for silent drift (default: all)
@@ -88,6 +89,45 @@ box completions <bash|zsh|install>  Print or install shell completions
 | Upgrade to latest | `box upgrade priv` |
 | Rollback | `box set-image priv <tag> && box pull priv <tag> && box assemble priv` |
 | Recreate without re-pulling | `box assemble priv` |
+| Pre-fetch every image now | `box pull-all` |
+
+## Keeping images pre-fetched (host timer)
+
+`host-systemd/` ships a user timer that runs `box pull-all` every hour, so a new
+nightly image is already on disk before you ask for it and `box upgrade` does not
+stall on a multi-GB download. It only *downloads* — no container is recreated and
+nothing running is disrupted, so upgrading stays a deliberate manual step.
+
+Install it on the **host**, not inside a box: `bin/box` drives the host's podman,
+which is not reachable from within a container.
+
+```bash
+install -Dm644 host-systemd/box-pull.service ~/.config/systemd/user/box-pull.service
+install -Dm644 host-systemd/box-pull.timer   ~/.config/systemd/user/box-pull.timer
+systemctl --user daemon-reload
+systemctl --user enable --now box-pull.timer
+
+systemctl --user list-timers box-pull.timer   # confirm it is scheduled
+systemctl --user start box-pull.service       # run it once now
+journalctl --user -u box-pull.service -n 50   # see what it did
+```
+
+Three things to know:
+
+- **`ExecStart` hardcodes the checkout path** (`%h/distrobox/devbox/home/boxes`).
+  Edit it if your clone lives elsewhere.
+- **A `--user` timer only runs while you are logged in.** Run
+  `loginctl enable-linger $USER` if you want it to keep pulling on a machine you
+  are logged out of.
+- **Hourly `latest` pulls leave the previous images untagged**, so disk use grows
+  by roughly one image per box per day. Reclaim it with `podman image prune -f`
+  (plus `sudo podman image prune -f` for the rootful `priv`/`work` store, which
+  is a separate one). Images still referenced by an existing container are never
+  removed, so this cannot strand a box.
+
+Pulling `priv` and `work` runs `sudo podman`, which the timer can only do
+unattended if `podman` is NOPASSWD in sudoers on the host.
+
 
 ## Forking / Using Your Own Images
 
@@ -248,6 +288,7 @@ scripts/
   compile-box-toml.py   Compiles box.toml → distrobox.ini
 bin/
   box                   Host-side CLI
+host-systemd/           Host user units (hourly image pre-fetch), installed on the host
 setup.sh                One-shot setup script for new users
 .github/workflows/
   build.yml             CI build and cleanup

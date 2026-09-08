@@ -1,0 +1,18 @@
+# Hourly is well above the once-a-day cadence the images are actually built at
+# (CI builds nightly at 03:00 UTC plus on push), so most runs are a no-op
+# registry check. The point is that whenever a new image does land, it is
+# already on disk before you ask for it.
+
+[Unit]
+Description=Hourly pull of box images
+
+[Timer]
+OnCalendar=hourly
+# Spread the load off the exact top of the hour.
+RandomizedDelaySec=10m
+AccuracySec=1m
+# Catch up after a boot or a resume that missed a trigger.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
