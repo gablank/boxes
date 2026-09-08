@@ -249,6 +249,21 @@ jobs:
           cat "$RUNNER_TEMP/report.md"
           cat "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
 
+      # A failed gate aborts here, before any PR exists. Opening a labelled PR and
+      # relying on the vetter to honour the label would make the scope guarantee
+      # depend on a model's compliance; refusing to create the PR at all makes it
+      # depend on the workflow. An out-of-scope bump can never become mergeable.
+      - name: Fail the run if a gate failed
+        if: >-
+          steps.detect.outputs.changed == 'true' &&
+          (steps.gate_scope.outputs.verdict == 'FAIL' ||
+           steps.gate_provenance.outputs.verdict == 'FAIL')
+        run: |
+          echo "::error::a mechanical audit gate failed; no PR was opened"
+          echo "scope=${{ steps.gate_scope.outputs.verdict }} provenance=${{ steps.gate_provenance.outputs.verdict }}"
+          echo "The full report is in this run's job summary."
+          exit 1
+
       - name: Commit, push, and open the PR
         id: pr
         if: steps.detect.outputs.changed == 'true' && !inputs.dry_run && inputs.rewind == ''
@@ -273,33 +288,13 @@ jobs:
           git commit -q -F "$RUNNER_TEMP/commit.txt"
           git push -q origin "$branch"
 
-          verdict=OK
-          if [[ "${{ steps.gate_scope.outputs.verdict }}" == "FAIL" \
-             || "${{ steps.gate_provenance.outputs.verdict }}" == "FAIL" ]]; then
-            verdict="GATE FAILED"
-          fi
-
-          gh label create aur-bump      --color 0e8a16 --force --description "Automated AUR PKGBUILD bump" >/dev/null 2>&1 || true
-          gh label create needs-review  --color d93f0b --force --description "Automated gate failed; do not merge unread" >/dev/null 2>&1 || true
-
-          labels="aur-bump"
-          [[ "$verdict" == "GATE FAILED" ]] && labels="aur-bump,needs-review"
+          gh label create aur-bump     --color 0e8a16 --force --description "Automated AUR PKGBUILD bump" >/dev/null 2>&1 || true
+          gh label create needs-review --color d93f0b --force --description "Vetting found a problem; do not merge unread" >/dev/null 2>&1 || true
 
           url="$(gh pr create \
-            --title "aur: Upgrade ($verdict)" \
+            --title "aur: Upgrade" \
             --body-file "$RUNNER_TEMP/report.md" \
             --base main --head "$branch" \
-            --label "$labels")"
+            --label aur-bump)"
           echo "Opened $url"
           echo "url=$url" >> "$GITHUB_OUTPUT"
-
-      # A failed gate must surface in the Actions UI, but only after the PR
-      # exists -- the PR is what a human reads to decide what happened.
-      - name: Fail the run if a gate failed
-        if: >-
-          steps.detect.outputs.changed == 'true' &&
-          (steps.gate_scope.outputs.verdict == 'FAIL' ||
-           steps.gate_provenance.outputs.verdict == 'FAIL')
-        run: |
-          echo "A mechanical audit gate failed; see ${{ steps.pr.outputs.url }}"
-          exit 1

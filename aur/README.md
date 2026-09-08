@@ -68,9 +68,18 @@ these from the repo root with the re-vendored changes unstaged. If the bump is
 already committed, add the range to each `git diff`/`git show` (`HEAD~1..HEAD`,
 `HEAD~1:aur/...`).
 
-Steps 1 and 4 are mechanical and run automatically in `aur-bump.yml`, which
-fails the run and labels the PR `needs-review` if either trips. Steps 2, 3 and 5
-need a reader; the workflow pre-computes their inputs into the PR body.
+Steps 1 and 4 are mechanical and run automatically in `aur-bump.yml`. If either
+trips, the run **fails without opening a PR at all** — an out-of-scope bump never
+becomes something that can be merged. Steps 2, 3 and 5 need a reader; the
+workflow pre-computes their inputs into the PR body.
+
+Three things confine an automated bump to `aur/`, and they are deliberately not
+all in the same place: `scripts/vendor-aur.sh` only writes under `aur/`; the
+workflow stages with `git add -A aur/`, so nothing else can enter the commit;
+and gate 1 rejects even an in-`aur/` file that is not a PKGBUILD or the manifest.
+All three live inside the automation, so `.github/CODEOWNERS` adds a fourth that
+does not — with branch protection enabled, anything outside `aur/` needs a human
+approval the automation cannot give itself.
 
 **1. Only PKGBUILDs and the manifest should have changed.** A bump that also
 rewrites an `*.install`, `*.sh` or `*.patch` is the shape a poisoned package
