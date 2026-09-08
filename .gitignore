@@ -16,4 +16,6 @@ id_ed25519
 # home; they are not part of the repo. This is a PUBLIC repo, so keep personal
 # config out of reach of an accidental `git add -A`.
 .gitconfig
+.claude
 .claude/
+.mcp.json

@@ -1,12 +1,11 @@
 # Vendored AUR PKGBUILDs
 
-Every AUR package in the images is built from a **vetted PKGBUILD committed
-here** — the build never fetches PKGBUILDs from the AUR. This is a deliberate
-supply-chain control: the AUR is an attack surface (account-takeover campaigns
-hijack orphaned packages and inject payloads into PKGBUILDs, e.g. the June 2026
-"Atomic Arch" attack that poisoned 500+ packages). By building only from copies
-reviewed in pull requests, a malicious upstream PKGBUILD change cannot reach an
-image until a human has read the diff.
+Every AUR package in the images is built from a **PKGBUILD committed here** —
+the image build never fetches PKGBUILDs from the AUR. Vendoring makes recipe
+changes reviewable before they reach an image; its protection depends on the
+review and merge controls. The nightly workflow and external automated reviewer
+are part of that trust boundary. See [the security review](../SECURITY-REVIEW.md)
+for confirmed weaknesses in the current automation and the remediation order.
 
 ## Layout
 
@@ -28,22 +27,26 @@ directory. `yay` itself is vendored and built here too, so it still ships in the
 images for interactive `yay -S` after pulling — only the *image build* is locked
 to vendored copies.
 
-## How the build stays safe even though sources download at build time
+## What vendoring pins
 
-`makepkg` still downloads each package's *upstream* artifact (the chrome `.deb`,
-the vscode `.deb`, the claude binary, …) — but from the official vendor URL in
-the vetted PKGBUILD, gated by the `sha256sums`/`sha512sums` committed alongside
-it. A swapped upstream artifact fails the checksum and aborts the build.
+Most binary artifacts are downloaded from vendor URLs and checked against
+committed checksums. An artifact differing from its expected checksum fails the
+build. This checks identity against the reviewed value, not whether a new
+artifact and its accompanying checksum are safe.
 
-One residual non-hermetic step: the gke-gcloud-auth-plugin split package runs
-`gcloud components install` at build time, fetching that component from Google's
-own servers (not the AUR, not checksum-pinned). That is the same trust boundary
-as the gcloud tarball itself.
+The recipe pins do not cover all downloaded content. `oh-my-zsh-git` fetches
+floating upstream Git HEAD with `SKIP`; the gke-gcloud-auth-plugin split package
+runs `gcloud components install` without a repository checksum pin. Claude's
+license document is also unpinned, although its binary is checksummed. Cursor's
+initial `SKIP` is overwritten with a checksum later in the recipe. Outside AUR,
+the image installs unpinned npm dependencies and editor extensions. These are
+additional upstream trust relationships.
 
 ## Refreshing / bumping a package
 
-Vendored `-bin`/`-git` PKGBUILDs go stale as upstream releases; a stale one
-fails the build (404 or checksum mismatch) until bumped. To re-vendor and vet:
+Versioned binary recipes can go stale and fail with a 404 or checksum mismatch.
+A floating Git recipe can instead fetch new code without any recipe change.
+To re-vendor and vet:
 
 ```bash
 box vendor-aur <pkgbase>     # one package
@@ -61,34 +64,37 @@ stays for one-off bumps and for bumping a single stale package mid-day.
 
 ## Auditing a `vendor-aur` bump
 
-The vendoring is only worth anything if somebody actually reads the diff. A
-routine bump should be **nothing but** `pkgver`/`_commit`/checksum lines plus
-new `manifest.tsv` rows — anything else deserves a closer look. Work through
+Review the full diff, including version/checksum assignments and file modes.
+PKGBUILDs are shell programs: a line beginning with `pkgver=`, `_commit=`, or a
+checksum assignment can execute commands. A routine bump changes only validated
+literal values, not arbitrary text on lines with those prefixes. Work through
 these from the repo root with the re-vendored changes unstaged. If the bump is
 already committed, add the range to each `git diff`/`git show` (`HEAD~1..HEAD`,
 `HEAD~1:aur/...`).
 
-Steps 1 and 4 are mechanical and run automatically in `aur-bump.yml`. If either
-trips, the run **fails without opening a PR at all** — an out-of-scope bump never
-becomes something that can be merged. Steps 2, 3 and 5 need a reader; the
-workflow pre-computes their inputs into the PR body.
+Steps 1 and 4 run automatically in `aur-bump.yml`. The workflow normally aborts
+before opening a PR if either fails, but its report currently processes unsafe
+filename outputs before aborting (security review finding 1). Do not treat those
+gates as containment. Steps 2, 3 and 5 need a reader; the PR report is only an aid
+and its filtered diff must not replace the full diff.
 
-Three things confine an automated bump to `aur/`, and they are deliberately not
-all in the same place: `scripts/vendor-aur.sh` only writes under `aur/`; the
-workflow stages with `git add -A aur/`, so nothing else can enter the commit;
-and gate 1 rejects even an in-`aur/` file that is not a PKGBUILD or the manifest.
-All three live inside the automation, so `.github/CODEOWNERS` adds a fourth that
-does not — with branch protection enabled, anything outside `aur/` needs a human
-approval the automation cannot give itself.
+The intended commit scope is `aur/`: the nightly vendor invocation targets
+existing package directories, staging is limited to `aur/`, and gate 1 checks
+allowed filenames. These mechanisms are not a sandbox against command execution
+in the workflow. CODEOWNERS adds required review only when GitHub explicitly
+requires Code Owner approval. Check live rules and bypass actors; having a
+CODEOWNERS file or an unrelated status requirement is insufficient.
 
 Because the repo is public, anyone can open a PR, and CODEOWNERS matches on path
 rather than author — so a stranger's `aur/`-only PR is not covered by any of the
-above. The vetting routine checks three things an outsider cannot forge (author
-`github-actions[bot]`, head repo `gablank/boxes`, the `aur-bump` label) before
-reading any PR content, but a model performs that check. The enforceable
-counterpart is the `aur-bump/eligible` commit status the workflow posts on the
-branch it creates: made a required status check, GitHub refuses to merge any PR
-without it, independently of the model.
+above. The supplied vetting routine checks the author `github-actions[bot]`,
+head repo `gablank/boxes`, a dated `aur/bump-` branch, and the `aur-bump` label
+before reading PR content. These identify the delivery path, not safe package
+contents. The required `aur-bump/eligible` status provides an additional GitHub
+gate for identities without bypass rights. It is not unique to this workflow:
+other writers with status permission can post it. Bind the expected integration
+and verify connector permissions separately. Review and merge must refer to the
+same immutable head SHA.
 
 **1. Only PKGBUILDs and the manifest should have changed.** A bump that also
 rewrites an `*.install`, `*.sh` or `*.patch` is the shape a poisoned package
@@ -98,30 +104,35 @@ takes:
 git status --porcelain aur/
 ```
 
-**2. Strip the routine lines and read what's left.** This is the core review —
-whatever survives is the *actual* change in build behaviour:
+**2. Read the full diff, including purportedly routine lines.** Check complete
+assignments, quoting, command substitutions, extra commands, file modes, source
+expansions, and checksum-to-source mapping. Do not source or execute the candidate
+PKGBUILD to inspect its values. Automated acceptance requires a deterministic
+validator of literal changes against approved structure; prefix-based line
+stripping cannot establish that a recipe is safe.
 
 ```bash
-git diff -U0 -- 'aur/*/PKGBUILD' aur/manifest.tsv | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' \
-  | grep -viE "^[+-]\s*(pkgver=|_commit=|sha[0-9]+sums|md5sums)" \
-  | grep -vE "^[+-]\s*'[0-9a-f]{40,128}'?\)?$" \
-  | grep -vE '^[+-][a-z0-9-]+\s+[0-9a-f]{40}\s+[0-9]{4}-'
+git diff --raw -- aur/
+git diff --no-ext-diff --no-textconv -- aur/
 ```
 
-**3. No new download hosts.** Compare source URLs before and after, normalising
-version numbers and commit hashes so only genuine URL changes show up:
+**3. Validate complete source origins and paths.** The comparison below is an
+aid after validating package names and file types. Read raw URLs and their
+variable expansions too; normalization can conceal meaningful changes.
 
 ```bash
 urls() { grep -ohE 'https?://[^"'"'"' )]+' | sed -E 's/[0-9]+\.[0-9]+[0-9.]*/VER/g; s/[0-9a-f]{40}/COMMIT/g' | sort -u; }
-for p in $(git diff --name-only -- 'aur/*/PKGBUILD' | cut -d/ -f2); do git show "HEAD:aur/$p/PKGBUILD"; done | urls > /tmp/before.txt
-for p in $(git diff --name-only -- 'aur/*/PKGBUILD' | cut -d/ -f2); do cat "aur/$p/PKGBUILD"; done | urls > /tmp/after.txt
-diff /tmp/before.txt /tmp/after.txt
+audit_tmp=$(mktemp -d)
+for p in $(git diff --name-only -- 'aur/*/PKGBUILD' | cut -d/ -f2); do git show "HEAD:aur/$p/PKGBUILD"; done | urls > "$audit_tmp/before.txt"
+for p in $(git diff --name-only -- 'aur/*/PKGBUILD' | cut -d/ -f2); do cat "aur/$p/PKGBUILD"; done | urls > "$audit_tmp/after.txt"
+diff "$audit_tmp/before.txt" "$audit_tmp/after.txt"
 ```
 
 Every host must be the software vendor's own (`dl.google.com`,
 `downloads.cursor.com`, `update.code.visualstudio.com`, `downloads.claude.ai`,
 `gitlab.archlinux.org`, `github.com`). A new host, an IP literal, or a shortener
-is a stop-and-investigate.
+is a stop-and-investigate. Shared hosting domains such as `github.com` do not
+identify a vendor: verify the exact repository and path as well as the hostname.
 
 **4. Verify the vendored copies really are upstream at the pinned commits.**
 This catches a local copy that drifted from what `manifest.tsv` claims:
@@ -136,17 +147,17 @@ while IFS=$'\t' read -r base commit _; do
 done < aur/manifest.tsv; rm -rf "$tmp"
 ```
 
-**5. Red flags in the surviving diff** — any of these means read the upstream
+**5. Red flags in the full diff** — any of these means read the upstream
 AUR history before committing: a new `prepare()`/`build()` function or new lines
 in an existing one; `curl`/`wget`/`eval`/`base64 -d` anywhere; a new `install=`
 scriptlet; `sha*sums` entries changed to `'SKIP'`; sources added that aren't
 downloads (a new local file appearing in `aur/<pkgbase>/`).
 
-**What you do _not_ need to verify:** that the new checksums match the bytes the
-vendor currently serves. A wrong checksum fails the build — it cannot install a
-tampered artifact. Downloading several hundred MB to confirm sums buys nothing;
-CI is the check. What matters is where the URLs point and what the build scripts
-do.
+**Checksum limits:** `makepkg` checks downloaded bytes against the supplied sums,
+so duplicating that download is not a substitute for review. An attacker can
+change both a payload and its checksum, or execute code before checking sources.
+Review the checksum assignments themselves, exact source identity and paths,
+and all executable recipe content.
 
 **Structural changes are usually upstream, not an attack.** Arch-list splits
 (`source=` → `source_x86_64=`/`source_aarch64=`) are common. When source order
