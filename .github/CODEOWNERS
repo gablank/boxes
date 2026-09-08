@@ -1,20 +1,30 @@
 # Scope guard for the automated AUR bump.
 #
-# The nightly `aur-bump.yml` workflow opens a PR that the vetting routine can
-# merge without a human. That is only acceptable because the change is confined
-# to vendored AUR PKGBUILDs. Two checks in the workflow already enforce that, but
-# both live inside the thing being trusted -- this file moves the guarantee to
-# GitHub, where neither the workflow nor the model can talk its way past it.
+# The nightly `aur-bump.yml` workflow opens a PR that the vetting routine may
+# merge without a human. Everything outside `aur/` therefore requires the repo
+# owner's review: a bump that somehow reached Containerfile.base or a workflow
+# would need an approval the automation cannot give itself. Last matching
+# pattern wins, and an entry with no owner clears ownership.
 #
-# Last matching pattern wins, and an entry with no owner clears ownership. So:
-# everything requires the repo owner's review, except `aur/`, which the
-# automation may merge on its own. A bump that somehow touched Containerfile.base
-# or a workflow would need a human approval it cannot give itself.
+# WHAT THIS DOES NOT DO. CODEOWNERS matches on path, never on author, so the
+# `/aur/` exemption below is equally open to a pull request from a stranger --
+# this repository is public and anyone can open one touching only `aur/`. This
+# file is not what stops that. What stops it is the vetting routine's
+# eligibility check, which requires three facts an outsider cannot forge:
+#   - the PR author is `github-actions[bot]`
+#   - the head repository is `gablank/boxes` (a fork can never satisfy this,
+#     and pushing a branch inside the repo needs write access)
+#   - the PR carries the `aur-bump` label (labelling needs triage/write access)
+# Those are checked from API metadata before any PR content is read.
 #
-# INERT WITHOUT A REPO SETTING. This file does nothing until branch protection on
+# If you would rather not rely on the routine honouring that check at all,
+# delete the `/aur/` line. Every bump then needs your approval -- one click on a
+# PR that already carries a written audit, instead of an unattended merge.
+#
+# INERT WITHOUT A REPO SETTING. Nothing here applies until branch protection on
 # `main` enables "Require a pull request before merging" + "Require review from
-# Code Owners". Leave "Do not allow bypassing" unchecked so admin pushes straight
-# to main keep working; the restriction is meant for the automation, not for you.
+# Code Owners". Leave "Do not allow bypassing" unchecked so your own pushes
+# straight to main keep working; the restriction is meant for the automation.
 
 *       @gablank
 
