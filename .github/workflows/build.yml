@@ -180,6 +180,18 @@ jobs:
               # docs-only edit rebuilds base and every box to produce something
               # functionally identical. Negation must come after 'aur/**'.
               - '!aur/*.md'
+              # Same idea for scripts/ that never reach an image: Containerfile.base
+              # COPYs only init-root/init-user/shell-init/shell-env and box-brief.md,
+              # so the CI- and workstation-only scripts below cannot change any image.
+              # Negations must come after 'scripts/**'. Note the asymmetry is
+              # deliberate: a NEW script is not listed here, so it rebuilds -- wasteful
+              # but safe. Omitting a COPYed script would instead leave images silently
+              # stale, so never negate one that Containerfile.base copies.
+              - '!scripts/compile-box-toml.py'
+              - '!scripts/vendor-aur.sh'
+              - '!scripts/validate-aur-diff.py'
+              - '!scripts/test-aur-validator.sh'
+              - '!scripts/check-workflow-injection.py'
             priv:
               - 'priv/**'
             work:
