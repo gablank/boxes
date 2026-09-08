@@ -83,12 +83,26 @@ approval the automation cannot give itself.
 
 Because the repo is public, anyone can open a PR, and CODEOWNERS matches on path
 rather than author — so a stranger's `aur/`-only PR is not covered by any of the
-above. The vetting routine checks three things an outsider cannot forge (author
-`github-actions[bot]`, head repo `gablank/boxes`, the `aur-bump` label) before
-reading any PR content, but a model performs that check. The enforceable
-counterpart is the `aur-bump/eligible` commit status the workflow posts on the
-branch it creates: made a required status check, GitHub refuses to merge any PR
-without it, independently of the model.
+above. The vetting routine checks four things an outsider cannot forge (author
+`github-actions[bot]`, head repo `gablank/boxes`, an `aur/bump-<date>` head
+branch, and the `aur-bump` label) before reading any PR content, but a model
+performs that check. The enforceable counterpart is the `aur-bump/eligible`
+commit status the workflow posts on the branch it creates: made a required
+status check, GitHub refuses to merge any PR without it, independently of the
+model.
+
+**Where the vetter lives.** It is a Claude Code *cloud routine* named "Vet
+nightly AUR bump PR", woken by a webhook on every `pull_request` event in this
+repo, not by a schedule. Its prompt is stored in
+the routine, **not in this repository**, so it is not covered by the usual
+documentation audit; edit it at <https://claude.ai/code/routines> or with the
+`RemoteTrigger` tool, and re-read it whenever the audit above changes. Two
+properties of that environment shape the prompt and are easy to rediscover the
+hard way: `gh` is not installed and no GitHub credential is present, so every
+GitHub read and write goes through the `mcp__github__*` MCP tools (loaded on
+demand via `ToolSearch`); and the routine only has `Bash`, `Read`, `Grep`,
+`Glob` and `PushNotification` locally, which reach the checkout but never
+GitHub.
 
 **1. Only PKGBUILDs and the manifest should have changed.** A bump that also
 rewrites an `*.install`, `*.sh` or `*.patch` is the shape a poisoned package

@@ -88,6 +88,8 @@ setup.sh                    One-shot setup script for new users / forks
 .github/workflows/
   build.yml                 Nightly + on-push CI build and image cleanup
   aur-bump.yml              Nightly re-vendor of all AUR PKGBUILDs; opens a PR with an audit report
+                            (a Claude cloud routine, prompt stored outside this repo, vets and merges it —
+                             see "Where the vetter lives" in aur/README.md)
   CODEOWNERS                Scope guard: everything needs owner review except aur/ (needs branch protection to bite)
 .agents/
   rules/                    Always-active agent rules (core.mdc, self-improve.mdc)
