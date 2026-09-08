@@ -35,6 +35,8 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  # For the aur-bump/eligible commit status below.
+  statuses: write
 
 # Never let two bumps race for the same branch name.
 concurrency:
@@ -298,3 +300,20 @@ jobs:
             --label aur-bump)"
           echo "Opened $url"
           echo "url=$url" >> "$GITHUB_OUTPUT"
+
+          # Proof of provenance that GitHub itself can enforce.
+          #
+          # Everything else separating this PR from a stranger's -- the author,
+          # the head repo, the label -- is checked by the vetting model, so a
+          # prompt injection that talks it past those checks bypasses them. This
+          # status is different: mark `aur-bump/eligible` as a required status
+          # check in branch protection and GitHub refuses to merge any PR that
+          # lacks it, whatever the model decides. Only this workflow can post it,
+          # and only for a branch it just created; posting a status needs write
+          # access, which no outside contributor has.
+          head_sha="$(git rev-parse HEAD)"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
+            -f state=success \
+            -f context='aur-bump/eligible' \
+            -f description='Branch was created by the nightly AUR bump workflow' >/dev/null
+          echo "Posted aur-bump/eligible on $head_sha"

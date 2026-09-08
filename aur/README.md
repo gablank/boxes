@@ -81,6 +81,15 @@ All three live inside the automation, so `.github/CODEOWNERS` adds a fourth that
 does not — with branch protection enabled, anything outside `aur/` needs a human
 approval the automation cannot give itself.
 
+Because the repo is public, anyone can open a PR, and CODEOWNERS matches on path
+rather than author — so a stranger's `aur/`-only PR is not covered by any of the
+above. The vetting routine checks three things an outsider cannot forge (author
+`github-actions[bot]`, head repo `gablank/boxes`, the `aur-bump` label) before
+reading any PR content, but a model performs that check. The enforceable
+counterpart is the `aur-bump/eligible` commit status the workflow posts on the
+branch it creates: made a required status check, GitHub refuses to merge any PR
+without it, independently of the model.
+
 **1. Only PKGBUILDs and the manifest should have changed.** A bump that also
 rewrites an `*.install`, `*.sh` or `*.patch` is the shape a poisoned package
 takes:

@@ -17,14 +17,23 @@
 #   - the PR carries the `aur-bump` label (labelling needs triage/write access)
 # Those are checked from API metadata before any PR content is read.
 #
-# If you would rather not rely on the routine honouring that check at all,
-# delete the `/aur/` line. Every bump then needs your approval -- one click on a
-# PR that already carries a written audit, instead of an unattended merge.
+# Those checks are performed by a model, though, so a prompt injection that talks
+# it past them bypasses them. The enforceable counterpart is the
+# `aur-bump/eligible` commit status that `aur-bump.yml` posts on the branch it
+# creates: mark that context as a REQUIRED STATUS CHECK in branch protection and
+# GitHub refuses to merge any PR lacking it, whatever the model decides. Only
+# that workflow can post it, since posting a status needs write access.
 #
-# INERT WITHOUT A REPO SETTING. Nothing here applies until branch protection on
+# If you would rather not rely on unattended merging at all, delete the `/aur/`
+# line. Every bump then needs your approval -- one click on a PR that already
+# carries a written audit.
+#
+# INERT WITHOUT REPO SETTINGS. Nothing here applies until branch protection on
 # `main` enables "Require a pull request before merging" + "Require review from
-# Code Owners". Leave "Do not allow bypassing" unchecked so your own pushes
-# straight to main keep working; the restriction is meant for the automation.
+# Code Owners", and (for the status above) "Require status checks to pass" with
+# `aur-bump/eligible` selected. Leave "Do not allow bypassing" unchecked so your
+# own pushes straight to main keep working; the restriction is meant for the
+# automation.
 
 *       @gablank
 
