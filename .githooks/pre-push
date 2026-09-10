@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+while read -r _local_ref local_oid _remote_ref _remote_oid; do
+    # Deleted refs have no new commit to validate.
+    [[ "$local_oid" =~ ^0+$ ]] && continue
+    python3 scripts/check-workflow-yaml.py --ref "$local_oid"
+done

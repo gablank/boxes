@@ -22,6 +22,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate workflow YAML
+        run: python3 scripts/check-workflow-yaml.py
+
+      - name: Test workflow YAML push protection
+        run: python3 scripts/test-workflow-yaml.py
+
       - name: Compile all box.toml files
         run: |
           compiled=0
@@ -141,7 +147,7 @@ jobs:
           # which are deliberate. --severity=error catches genuine bugs
           # (parse errors, definitely-wrong constructs) without false noise.
           # Tighten the threshold once those patterns carry inline disables.
-          shellcheck --severity=error --shell=bash bin/box scripts/*.sh setup.sh
+          shellcheck --severity=error --shell=bash bin/box scripts/*.sh setup.sh .githooks/pre-push
 
       # --- Security regressions from the 2026-09-08 review -------------------
       # Both run read-only, in a job with no write token, and neither touches
@@ -192,6 +198,8 @@ jobs:
               - '!scripts/validate-aur-diff.py'
               - '!scripts/test-aur-validator.sh'
               - '!scripts/check-workflow-injection.py'
+              - '!scripts/check-workflow-yaml.py'
+              - '!scripts/test-workflow-yaml.py'
             priv:
               - 'priv/**'
             work:
