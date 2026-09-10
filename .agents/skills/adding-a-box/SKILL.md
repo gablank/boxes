@@ -35,6 +35,10 @@ In `.github/workflows/build.yml`:
 
 Quote step names containing `: `; otherwise GitHub rejects the workflow as invalid
 YAML before any lint job can run.
+Run `python3 scripts/check-workflow-yaml.py` after workflow edits. Enable the
+pre-push hook using README's developer setup; it checks the commits being pushed.
+The parser and push regression tests also run in CI. CI-only scripts remain
+excluded from the `base` path filter alongside the other local checks.
 
 - **Path filter** — add to the `dorny/paths-filter` `filters:` block:
   ```yaml

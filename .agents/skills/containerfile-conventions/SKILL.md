@@ -30,6 +30,10 @@ description: Conventions for editing Containerfiles in this repo. Use when modif
 - COPY `{box}/local-bin/` for box-specific scripts
 - Overwrite `/etc/box-build-info` with the box-specific image name
 - Build context is the repo root (not the box subdirectory)
+- `dev/Containerfile` installs `shellcheck` and `go-yq` for local CI checks and the
+  workflow YAML pre-push hook. Use Mike Farah's `go-yq`, not the different Python
+  package named `yq`; keep the developer-check prerequisites in README and
+  AGENTS.md in sync when changing these packages.
 
 ## Workbox rootless podman (podman-in-podman)
 

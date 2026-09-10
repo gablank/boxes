@@ -25,7 +25,7 @@ Treat everything installed in either image as software trusted on the host.
 |-----|---------|
 | `priv` | Personal development environment (adds glab, fuse2, firefox, obsidian, codex, ipython) |
 | `work` | Work environment (adds kubectl, k9s, qemu, glab, rootless podman, firefox, obsidian, codex, ipython) |
-| `dev` | Minimal box for developing the box system itself |
+| `dev` | Minimal box for developing the box system itself (includes shellcheck and go-yq for local checks) |
 
 ## Quick Start
 
@@ -258,6 +258,42 @@ do \
 
 See [AGENTS.md](AGENTS.md) — the "Adding or Removing a Box" section points at the step-by-step checklist in `.agents/skills/adding-a-box/SKILL.md`.
 
+## Developer checks before pushing
+
+Enable the versioned pre-push hook once per clone:
+
+```bash
+git config --local core.hooksPath .githooks
+```
+
+If you already use a custom hooks directory or pre-push hook, integrate
+`.githooks/pre-push` into it instead of replacing your existing setup. This is
+developer setup, separate from the host's `setup.sh`.
+
+The hook parses `.github/workflows/*.yml` and `*.yaml` in each commit being
+pushed, including branches other than the checked-out one. It blocks a push on
+invalid YAML or a missing parser; an uncommitted fix cannot hide a broken commit.
+Deleted refs are skipped. It checks YAML syntax, not GitHub's workflow schema or
+Actions expressions.
+
+Python 3 and [Mike Farah's yq v4](https://github.com/mikefarah/yq) are required.
+The dev image installs [go-yq](https://archlinux.org/packages/extra/x86_64/go-yq/);
+existing boxes need a rebuilt image and an upgrade. If an existing yq binary is
+outside PATH, select it for this clone with
+`git config --local box.yq /path/to/yq`, or set `YQ` for a single invocation.
+The checks never download or install tools.
+
+Run these manually when editing workflows:
+
+```bash
+python3 scripts/check-workflow-yaml.py       # working tree
+python3 scripts/check-workflow-yaml.py --ref HEAD
+python3 scripts/test-workflow-yaml.py        # local push regression tests
+```
+
+CI also runs the parser and regression tests, using the runner's yq. The local
+hook matters because malformed workflow YAML can prevent CI itself from starting.
+
 ## Image Build
 
 Images are built by GitHub Actions on every push to `main` and nightly at 03:00 UTC. Builds are skipped when the relevant files haven't changed — base only rebuilds if `Containerfile.base`, `scripts/`, or `local-bin/` changed; each box only rebuilds if base or its own directory changed. Scheduled and manual runs always rebuild everything.
@@ -287,6 +323,8 @@ dev/
   box.toml              Container definition (source of truth)
 local-bin/              Scripts installed into ALL boxes
 scripts/
+  check-workflow-yaml.py Parses workflow YAML locally, for pushed commits, and in CI
+  test-workflow-yaml.py  Local Git push regression tests for YAML validation
   init-root.sh          First-start root init (chsh, /etc/environment)
   init-user.sh          First-start user init (~/.ssh, .zshrc, rustup, ~/.codex/AGENTS.md)
   shell-init.sh         Sourced from .zshrc on every shell open (interactive)
@@ -296,6 +334,7 @@ scripts/
 bin/
   box                   Host-side CLI
 host-systemd/           Host user units (hourly image pre-fetch), installed on the host
+.githooks/pre-push      Validates workflow YAML in each pushed commit
 setup.sh                One-shot setup script for new users
 .github/workflows/
   build.yml             CI build and cleanup

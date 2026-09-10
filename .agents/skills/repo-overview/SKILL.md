@@ -30,6 +30,11 @@ This repo defines distrobox container environments built via CI and managed loca
 | `aur/` | Vetted AUR PKGBUILDs vendored per pkgbase (images build only from these) |
 | `bin/box` | Host-side CLI for managing boxes |
 | `.github/workflows/` | CI build and cleanup workflows |
+| `.githooks/pre-push` | Opt-in per-clone workflow YAML validation of pushed commits; see README developer setup |
+
+`scripts/check-workflow-yaml.py` uses Mike Farah's yq v4 (the dev image's `go-yq`
+package) in both CI and the push hook. `scripts/test-workflow-yaml.py` exercises
+real pushes to local repositories without network access.
 
 ## Image flow
 

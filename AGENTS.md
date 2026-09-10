@@ -78,6 +78,8 @@ scripts/
                             version/checksum/manifest update, else FAIL. Never executes the recipe
   test-aur-validator.sh     Adversarial regression tests for the above (runs in CI lint)
   check-workflow-injection.py  Fails if any workflow puts `${{ }}` inside a `run:` block (runs in CI lint)
+  check-workflow-yaml.py   Parses workflow YAML with yq, from the worktree or a Git commit
+  test-workflow-yaml.py    Regression tests using local Git pushes (runs in CI lint)
   init-root.sh              First-start root init (chsh, /etc/environment) — no TTY
   init-user.sh              First-start user init (~/.ssh, .zshrc, rustup, ~/.codex/AGENTS.md) — no TTY, no sudo
   shell-init.sh             Sourced from .zshrc on every shell open — interactive runtime env, services
@@ -88,6 +90,7 @@ scripts/
 bin/
   box                       Host-side CLI for managing boxes
 host-systemd/               Host user units (hourly `box pull-all` timer) — run on the HOST, not in a box
+.githooks/pre-push           Validates workflow YAML in each pushed commit; enable per clone
 setup.sh                    One-shot setup script for new users / forks
 .github/workflows/
   build.yml                 Nightly + on-push CI build and image cleanup
@@ -183,10 +186,11 @@ The completion heredocs **interpolate** the command lists from the arrays at run
 
 **CI enforcement:** The `lint` job in `.github/workflows/build.yml` runs on every push and verifies:
 - Every `*/box.toml` compiles cleanly with `scripts/compile-box-toml.py`
+- Workflow YAML parses with Mike Farah's yq v4 (`scripts/check-workflow-yaml.py`), and local push regression tests pass (`scripts/test-workflow-yaml.py`)
 - `box completions bash` and `box completions zsh` both exit 0 and contain every entry in `_BOX_COMMANDS`
 - Every command extracted from the `case` dispatch block exists in `_BOX_COMMANDS`
 - Every `box <cmd>` invocation documented in `README.md`, `AGENTS.md`, the skills, and `setup.sh` exists in `_BOX_COMMANDS` (catches stale command names in docs)
-- `shellcheck --severity=error` passes on `bin/box`, `scripts/*.sh`, and `setup.sh`
+- `shellcheck --severity=error` passes on `bin/box`, `scripts/*.sh`, `setup.sh`, and `.githooks/pre-push`
 - **No workflow interpolates `${{ }}` into a `run:` block** (`scripts/check-workflow-injection.py`). Actions splices those into the script *source* before bash parses it, so an expression carrying untrusted text is a shell injection — bind it in `env:` and use `"$VAR"` instead. This is a real bug that shipped here, not a hypothetical
 - **The AUR diff validator accepts routine bumps and rejects the known attack shapes** (`scripts/test-aur-validator.sh`) — includes Cursor's literal indexed checksums (`sha512sums[0]=<hash>`); indexes must be decimal integers, never variables or arithmetic expressions. Rejection cases cover command substitution and appended commands on `pkgver=`/checksum lines, checksums downgraded to `SKIP`, added scriptlets, symlinked or executable PKGBUILDs, hostile filenames
 
@@ -198,9 +202,24 @@ workflow with zero jobs, rather than a failed lint step.
 
 ## Local checks
 
-There is no test suite; the CI `lint` job is the only gate. Mirror it locally before pushing. The `dev` box ships `shellcheck` (added in `dev/Containerfile`) so the static-analysis step below runs out of the box:
+The CI `lint` job includes regression scripts; mirror it locally before pushing.
+The `dev` image ships `shellcheck` and `go-yq` for these checks.
+
+Enable the tracked hook per clone with `git config --local core.hooksPath .githooks`
+(integrate it with an existing hook rather than replacing one). It validates the
+actual local commit IDs from Git's pre-push input, not HEAD or worktree files;
+deletions are skipped, and missing yq blocks pushes. Python 3 and Mike Farah's
+yq v4 are required. `YQ` overrides the executable, then the local Git setting
+`box.yq`, then PATH. See README's developer setup for existing boxes. The hook and
+CI share `scripts/check-workflow-yaml.py`; this checks YAML syntax only. Keep
+`.githooks/pre-push` in the CI shellcheck list and run its regression tests when
+changing either the hook or parser wrapper.
 
 ```bash
+# Parse workflow YAML and test the push hook without network access.
+python3 scripts/check-workflow-yaml.py
+python3 scripts/test-workflow-yaml.py
+
 # Every box.toml must compile cleanly.
 for d in */; do
   if [ -f "$d/box.toml" ]; then python3 scripts/compile-box-toml.py "$d" || exit 1; fi
@@ -219,7 +238,7 @@ bash -c '
 '
 
 # Static analysis (CI runs this at --severity=error)
-shellcheck --severity=error --shell=bash bin/box scripts/*.sh setup.sh
+shellcheck --severity=error --shell=bash bin/box scripts/*.sh setup.sh .githooks/pre-push
 
 # No workflow may interpolate ${{ }} into a run: block.
 python3 scripts/check-workflow-injection.py
