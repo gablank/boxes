@@ -147,7 +147,7 @@ jobs:
       # Both run read-only, in a job with no write token, and neither touches
       # the network or executes any candidate PKGBUILD.
 
-      - name: No Actions expressions inside run: blocks
+      - name: "No Actions expressions inside run: blocks"
         run: python3 scripts/check-workflow-injection.py
 
       - name: AUR diff validator rejects the known attack shapes
