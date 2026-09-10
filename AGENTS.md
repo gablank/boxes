@@ -135,6 +135,10 @@ tests, the workflow and `.github/aur-vet-prompt.md` synchronized. The finish job
 binds the response to the complete request and policy digest, repeats eligibility,
 and uses an atomic SHA-bound merge. FAIL/error posts escaped findings and holds
 the PR; model output never supplies shell code, an API endpoint or a target.
+Review execution/output errors must exit nonzero while still uploading the
+result artifact for finish. Publish only fixed diagnostic categories/messages,
+never raw CLI output or session data; finish accepts ERROR explanations only
+from the trusted allowlist and only with a matching request digest.
 A merge explicitly dispatches `build.yml`, since GITHUB_TOKEN suppresses the
 push-triggered build. Do not add PR-triggered jobs, candidate checkouts, redirects,
 automatic write retries, tool permissions or agent repository instructions.

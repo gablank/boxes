@@ -351,5 +351,5 @@ host-systemd/           Host user units (hourly image pre-fetch), installed on t
 setup.sh                One-shot setup script for new users
 .github/workflows/
   build.yml             CI build and cleanup
-  aur-bump.yml          Nightly AUR audit, PR publication, and explicit Claude review request
+  aur-bump.yml          Nightly AUR audit, PR/draft publication, isolated Claude review and merge/comment
 ```

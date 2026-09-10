@@ -113,6 +113,8 @@ using Claude Code with subscription OAuth. The five jobs are:
    unchanged repository content are not model input. It returns JSON containing
    only `verdict` and `reason`. Do not substitute `--allowedTools`, which only
    grants permission, or `--bare`, which does not support subscription OAuth.
+   Execution or output errors fail the review job. Its result artifact is still
+   uploaded after failure so the finish job can post a fixed diagnostic.
 5. **finish:** uses ordinary code and a separate GitHub token to revalidate
    eligibility, the exact diff and the prompt, and match the request digest to
    the review result. PASS rechecks metadata immediately before an atomic
@@ -160,10 +162,11 @@ After this version reaches main, disable the old Claude cloud routine and revoke
 its API trigger token. Remove the retired `AUR_REVIEW_ROUTINE_TOKEN` secret and
 `AUR_REVIEW_ROUTINE_ID` variable; keep them until migration to avoid breaking
 old runs prematurely. Start a **new** workflow run after migration: rerunning
-an old run executes its old workflow and code. The operator confirmed the OAuth
-secret was added during implementation; a live subscription review still needs
-verification after deployment. Until migration completes, the old cloud routine
-remains a separate authority and its prompt restrictions are not a sandbox.
+an old run executes its old workflow and code. The first live run created PR #6
+but its isolated review returned ERROR and correctly left it unmerged. Successful
+subscription inference remains unverified. The old trigger secret and variable
+have been removed; ensure the old cloud routine is also disabled, since its
+authority is separate from these workflow controls.
 
 **Human review and recovery.** Nonroutine drafts are intentionally ineligible
 for automated merging even if someone marks them ready or removes the label.
@@ -178,6 +181,16 @@ and run before retrying an ambiguous failure; the finish phase refuses a moved,
 held or already-closed PR. A failed image-build dispatch after a confirmed merge
 requires manually dispatching `build.yml`, not repeating the merge. Authentication
 or installation errors still leave the existing PR available for human review.
+The review log reports a fixed error category and explanation (missing secret,
+authentication, access, usage limit, service, CLI arguments/startup, timeout or
+invalid output). It never prints raw CLI output, session data or credentials.
+The finish job copies only recognized, request-bound error explanations into the
+PR comment; unknown or missing results get a generic error. A review ERROR makes
+the job red even when the finish job successfully posts that comment; a valid
+FAIL verdict is a completed review, not an execution failure. After deploying a
+fix, start a **new** run on main. A PR already held with `needs-review` and a
+failing status is not automatically retried; review or close the superseded PR
+manually after inspecting the new candidate.
 Malformed artifacts, changes outside `aur/`, or a patch exceeding the 16 MiB
 publication limit stop publication safely; no process can promise to publish
 an unavailable or unusable candidate. A model diff exceeding 128 KiB is held for
