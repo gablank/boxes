@@ -244,7 +244,12 @@ a Claude review through its routine API. Setup requires the main-only
 `aur-review` GitHub environment and deployment of the reviewed routine prompt;
 see [AUR review setup and recovery](aur/README.md#where-the-vetter-lives).
 PR events cannot start the API caller. Same-day reruns use unique branch names
-and never overwrite a commit already under review.
+and never overwrite a commit already under review. The caller sends only a
+validated diff with zero unchanged context and fixed PR identifiers, and refuses
+to start Claude unless main requires the eligibility status from GitHub Actions.
+The prompt limits Claude to that input and one SHA-bound merge; enforcing the
+read limit also requires removing repository access and read tools in the
+routine environment.
 
 ### Add a package to one box
 

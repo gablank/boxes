@@ -86,9 +86,10 @@ as arithmetic; adding `SKIP` remains forbidden.
 The workflow is split so that the half handling upstream-controlled content holds
 no write token at all (`contents: read`, `persist-credentials: false`); a
 separate job holds the write tokens, runs only on PASS, and re-validates the
-patch it receives rather than trusting the verdict. Step 5 still needs a reader:
-validation proves a change is *literal*, not that the new upstream release is
-trustworthy, so the PR carries the full diff.
+patch it receives rather than trusting the verdict. Validation proves a change
+is *literal*, not that the new upstream release is trustworthy. The automated
+reviewer reads only changed lines; it does not perform the full manual audit
+below, including unchanged source relationships or references elsewhere.
 
 The intended commit scope is `aur/`: the nightly vendor invocation targets
 existing package directories, staging is limited to `aur/`, and gate 1 checks
@@ -97,87 +98,95 @@ in the workflow. CODEOWNERS adds required review only when GitHub explicitly
 requires Code Owner approval. Check live rules and bypass actors; having a
 CODEOWNERS file or an unrelated status requirement is insufficient.
 
-Because the repo is public, anyone can open a PR, and CODEOWNERS matches on path
-rather than author — so a stranger's `aur/`-only PR is not covered by any of the
-above. The supplied vetting routine checks the author `github-actions[bot]`,
-head/base repo `gablank/boxes`, base branch `main`, a branch matching
-`aur/bump-YYYY-MM-DD-<run_id>-<publish_attempt>`, and the `aur-bump` label
-before reading PR content. It also checks the exact commit's eligibility status
-and successful audit/publish jobs through GitHub's API. These identify the delivery path, not safe package
-contents. The required `aur-bump/eligible` status provides an additional GitHub
-gate for identities without bypass rights. It is not unique to this workflow:
-other writers with status permission can post it. Bind the expected integration
-and verify connector permissions separately. Review and merge must refer to the
-same immutable head SHA.
+Because the repo is public, anyone can open a PR. The trusted caller checks
+bot authorship, same head/base repository, main target, publisher branch and
+exact SHA, the `aur-bump` label, absence of `needs-review`, and the actual creator
+and run binding of the successful eligibility status. It runs only after the
+workflow's audit and publish jobs succeed. These checks identify the delivery
+path; they do not establish that a package release is safe. Ordinary outside
+contributors cannot label PRs under GitHub's standard permissions, but triage
+collaborators and suitably authorized apps can. Labels are not a merge permission.
 
 <a id="where-the-vetter-lives"></a>
 
-**Where the vetter lives.** It is a Claude Code *cloud routine* named "Vet
-nightly AUR bump PR". The workflow's `review` job explicitly starts it through
-the routine API after `audit` and `publish` succeed. The workflow only accepts
-`schedule` and `workflow_dispatch` on `main`; creating or editing an outsider's
-PR cannot run this job. Its instructions are reviewed here as
-[`.github/aur-vet-prompt.md`](../.github/aur-vet-prompt.md) and *deployed* into
-the routine, which is where they actually execute — change that file in a pull
-request first, then deploy. The two copies can drift and nothing in CI can read
-the deployed one back, so re-read both whenever the audit above changes:
-correcting this file does not correct the routine. Two properties of that
-environment shape the prompt and are easy to rediscover the hard way: `gh` is
-not installed and no GitHub credential is present, so every GitHub read and
-write goes through the `mcp__github__*` MCP tools (loaded on demand via
-`ToolSearch`); and the routine only has `Bash`, `Read`, `Grep`, `Glob` and
-`PushNotification` locally, which reach the checkout but never GitHub.
+**Where the vetter lives.** The Claude Code cloud routine "Vet nightly AUR bump
+PR" is started explicitly through its API by the workflow's `review` job. Only
+`schedule` and `workflow_dispatch` on `main` can start the workflow; PR events
+cannot start the caller. Instructions are reviewed in
+[`.github/aur-vet-prompt.md`](../.github/aur-vet-prompt.md) and deployed separately
+into the routine. CI cannot read the deployed copy back. The earlier seven-field
+API prompt merged PR #4 on 2026-09-10; the eight-field, changes-only revision is
+prepared here and still requires deployment. A successful prior merge does not
+verify the current prompt, branch protections or identity permissions.
 
-**API trigger setup (deployment required).** The code change alone does not
-configure Claude or GitHub secrets. Last known deployed prompt: 2026-09-08;
-the API prompt prepared on 2026-09-10 still needs deployment.
+**API trigger setup.** Code changes alone do not configure Claude or GitHub:
 
-1. In the routine, deploy the prompt below the separator in
-   `.github/aur-vet-prompt.md`, add an API trigger, and remove the Pull request
-   trigger. Keep the working GitHub tools; the new prompt also needs Actions
-   run/job and commit-status reads. A missing tool must stop the review.
-2. Create a GitHub Actions environment named `aur-review`. Under deployment
-   branches and tags, select **Selected branches and tags** and add only the
-   **branch** `main` (no tag rule). Put `AUR_REVIEW_ROUTINE_TOKEN` in this
-   environment's secrets and `AUR_REVIEW_ROUTINE_ID` in its variables. The ID
-   is the `trig_...` segment of the generated API URL. Do not put the token at
-   repository scope, in the prompt, or in this public repo. The caller fixes
-   the destination to `api.anthropic.com` and refuses redirects.
-3. Protect `main`: require Code Owner review for workflow, scripts and prompt
-   changes, and require `aur-bump/eligible` with GitHub Actions as its expected
-   integration. The Claude merge identity must not bypass those protections.
-   These are live GitHub settings, not guarantees provided by CODEOWNERS or
-   this checkout. Repository admins and other trusted write-token holders
-   remain inside the trust boundary; an eligibility status is not an exclusive
-   signature of this workflow.
-4. Run **AUR bump** through Actions' **Run workflow**, on `main`. With eligible
-   changes, verify `audit`, `publish`, and `review` succeed, then check Claude's
-   run list and review result. A green `review` job means the API accepted a
-   session, not that Claude approved or merged the PR. Public logs report
-   acceptance without printing the token, raw response, or private session URL.
-   With no changes there is no PR and no review request.
+1. Deploy the text below the separator in `.github/aur-vet-prompt.md`. Keep only
+   the API trigger; remove the Pull request trigger. The revised prompt permits
+   only one GitHub operation: a squash merge bound atomically to the supplied
+   head SHA. It forbids GitHub reads, file reads, browsing, and comment/review/
+   label writes. The merge tool must support an expected-head-SHA parameter.
+2. For an enforced changes-only input boundary, the reviewer must have no
+   repository checkout, auto-loaded repository instructions, or read tools.
+   Prompt instructions alone do not remove these capabilities. A routine with
+   an attached repository or broad GitHub connector cannot be claimed to meet
+   this strict boundary without verifying its platform configuration. If those
+   capabilities cannot be removed, use an isolated, tool-less reviewer and a
+   separate deterministic merger; that architecture is not implemented here.
+3. Configure GitHub environment `aur-review` with **Selected branches and tags**:
+   only the **branch** `main`, no tag rule. Store `AUR_REVIEW_ROUTINE_TOKEN` in
+   its secrets and `AUR_REVIEW_ROUTINE_ID` in its variables. The ID is the
+   `trig_...` segment of the API URL. Never put the token at repository scope,
+   in the prompt or in this public repo. The caller fixes the destination to
+   `api.anthropic.com` and refuses redirects.
+4. In Settings → Rules → Rulesets, edit the active main ruleset. Require
+   `aur-bump/eligible` with **GitHub Actions** as its expected source (public
+   GitHub integration ID `15368`). The caller checks this through the effective
+   branch-rules API and refuses missing, unbound or differently bound checks.
+   Claude's merge identity must have no bypass and no permission to edit the
+   rule. Inspect authenticated bypass settings and the actual connected
+   identity; public rule output alone does not establish this. Other trusted
+   Actions workflows can still produce this status; protect workflow changes.
+   Require Code Owner approval for workflow, scripts and prompt changes too;
+   CODEOWNERS alone does not enable that requirement.
+5. After both code and prompt updates, start a **new** AUR bump run on `main`.
+   Rerunning an old run uses its original workflow/source and old payload schema.
+   Do not deploy the new caller with the old prompt or vice versa. With eligible
+   changes, check all three jobs and then Claude's result. A green `review` job
+   means the API accepted a session, not that Claude approved or merged. With
+   no changes there is no PR and no review request. Public logs do not print
+   tokens, raw API responses or private session URLs.
 
-`scripts/trigger-aur-review.py` independently checks the publisher outputs and
-live PR/status metadata before sending anything to Claude. It sends only the
-repository, PR number, branch, immutable head/source SHAs, run ID and publisher
-attempt; no title, body, comments, recipes, or diff reaches the trigger payload.
-Claude must repeat the eligibility checks, verify successful CI jobs, read the
-actual diff as untrusted data, and use an atomic expected-head-SHA merge. An
-outsider's payload or PR text cannot grant authority in the saved prompt. This
-reduces exposure; it does not make an LLM immune to prompt injection or prove
-that an upstream release is safe.
+**Exactly what Claude receives.** `scripts/trigger-aur-review.py` checks live
+PR/status/rules metadata in ordinary code. It fetches the candidate as Git
+objects without checking it out, verifies it is one commit directly on the
+trusted source, checks all paths, and reruns the trusted literal-diff validator
+using an isolated temporary index. The payload contains the seven fixed
+identifiers (`repository`, `pr_number`, `head_branch`, `head_sha`, `source_sha`,
+`run_id`, `publish_attempt`) plus `diff`: every added and removed line with diff
+headers, but zero unchanged lines. Even the nearby source text Git normally
+appends to hunk headers is removed. PR titles, descriptions, comments, reviews,
+commit messages and repository files are not included. Oversized payloads fail
+rather than being truncated. The routine must assess only this supplied diff;
+it must not fetch additional context or claim a full-source audit.
+
+The SHA-bound merge rejects a changed head, and GitHub enforces its required
+status for identities without bypass. The label checks occur before invocation;
+GitHub does not continuously enforce those labels through this status rule.
+The caller's rule check detects a missing app binding, not the merger's bypass
+or administration rights. Prompt restrictions are not a permissions sandbox.
 
 **Recovery.** There is no automatic POST retry: a timeout can follow successful
-acceptance, and the API has no idempotency key. Check Claude's run list first.
-If no run started, use **Re-run failed jobs** to retry only `review`; it keeps
-the original publisher's PR/SHA/attempt. A full workflow rerun creates a new
-branch with the run ID and attempt suffix and can leave multiple bump PRs open;
-it never force-pushes a reviewed branch. The reviewer processes only the PR in
-the payload and stops if that PR is already closed. Manual **Run now** recovery
-requires the metadata JSON printed on the caller's `Review target:` log line, not a
-free-form instruction to find and merge an arbitrary PR. Old date-only branches
-predate this protocol and need human review. Branch format, payload fields,
-eligibility status target URL, script, and deployed prompt must stay in sync.
+acceptance and the API has no idempotency key. Check Claude's run list first.
+If no run started and the deployed prompt matches that run's payload schema,
+use **Re-run failed jobs** to retry only `review`, retaining the original
+publisher PR/SHA/attempt. A full rerun creates a unique branch and can leave
+multiple PRs open; it never force-pushes a reviewed branch. The caller refuses
+an already closed PR. The seven-field `Review target:` log is diagnostic
+metadata, not a complete payload: do not paste it into **Run now** or ask Claude
+to find the diff. For a schema migration, start a new workflow run after updating
+both code and prompt. Old date-only branches require human review. Keep branch
+format, eight payload fields, status binding, script and deployed prompt in sync.
 
 The old webhook did not fire for either a bot or human PR on 2026-09-08 despite
 the app being installed and no filters configured. A manual Claude run on
@@ -185,7 +194,34 @@ the app being installed and no filters configured. A manual Claude run on
 and GitHub-tool access, but did not verify webhook delivery; the explicit API
 handoff replaces it. `scripts/test-aur-review-trigger.py` runs offline in CI
 and covers hostile events, fork/spoofed PRs, head changes, stale/forged statuses,
-payload isolation, redirects and ambiguous timeouts.
+payload isolation, redirects, ambiguous timeouts, required-app binding, and
+real Git fixtures proving unchanged source and commit messages are excluded.
+
+The first API attempt for PR #4 returned HTTP 401. Replacing the routine token
+in the `aur-review` environment and rerunning the failed job started Claude;
+the operator then confirmed the merge. Environment secrets are read when the
+job starts, so this recovery used the updated token without republishing the PR.
+
+**PR #4 exposed a fail-closed violation.** Its transcript says the MCP status
+tool omitted `creator`; Claude substituted an inference from workflow source,
+job success and timing, then merged despite step 1 explicitly requiring a hard
+stop on missing status evidence. The API caller independently checked the actual
+creator before invoking Claude, so that field was not entirely unchecked. This
+is nevertheless a failure of the routine's merge rules, not evidence that they
+are enforced. A successful handoff/merge does not prove safe unattended review.
+The existing caller already blocks the outsider-created-PR trigger path. First
+ensure that `aur-bump/eligible` is required from GitHub Actions and Claude's
+identity cannot bypass or alter that rule. On 2026-09-10 the public effective
+rules API listed this status requirement without an integration binding; the
+earlier SSH push explicitly bypassed it. Claude's actual bypass rights still
+need verification. Outsiders cannot directly apply repository labels under
+GitHub's standard permissions, but can comment on an eligible public PR after
+the caller's check. A label-only gate is weaker when the reviewer itself can
+apply labels. The prepared changes-only payload excludes this discussion text.
+A tool-less reviewer plus a separate deterministic merger would enforce the
+read boundary if the routine platform cannot remove its existing capabilities. Adding
+the missing field to the MCP tool fixes tool coverage, but cannot enforce the
+model's decision to stop.
 
 **1. Only PKGBUILDs and the manifest should have changed.** A bump that also
 rewrites an `*.install`, `*.sh` or `*.patch` is the shape a poisoned package

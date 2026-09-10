@@ -9,22 +9,24 @@
 # WHAT THIS DOES NOT DO. CODEOWNERS matches on path, never on author, so the
 # `/aur/` exemption below is equally open to a pull request from a stranger --
 # this repository is public and anyone can open one touching only `aur/`. This
-# file is not what stops that. What stops it is the vetting routine's
-# eligibility check, which requires three facts an outsider cannot forge:
+# file is not what stops that. The API caller checks eligibility in code before
+# starting the routine. Among the checks is this combination
+# that an ordinary outside contributor cannot satisfy:
 #   - the PR author is `github-actions[bot]`
 #   - the head repository is `gablank/boxes` (a fork can never satisfy this,
 #     and pushing a branch inside the repo needs write access)
 #   - the PR carries the `aur-bump` label (labelling needs triage/write access)
-# Those are checked from API metadata before any PR content is read.
+# Those are checked in ordinary code before any diff is sent to Claude.
 #
-# Those checks are performed by a model, though, so a prompt injection that talks
-# it past them bypasses them. The enforceable counterpart is the
+# The caller sends only a validated zero-context diff and fixed identifiers.
+# The prompt forbids reading other content or changing labels, but does not
+# restrict the available tools or GitHub identity permissions. The merge-time gate is the
 # `aur-bump/eligible` commit status that `aur-bump.yml` posts on the branch it
 # creates: mark that context as a REQUIRED STATUS CHECK in branch protection and
 # GitHub refuses a merge lacking it when the merging identity cannot bypass the
 # rule. Other writers with status permission can post the same context; it is
-# not exclusive to this workflow. Bind an expected integration in GitHub and
-# audit the merger's actual permissions.
+# not exclusive to this workflow. The caller requires the GitHub Actions app
+# binding; separately audit the merger's bypass and administration permissions.
 #
 # If you would rather not rely on unattended merging at all, delete the `/aur/`
 # line. Every bump then needs your approval -- one click on a PR that already

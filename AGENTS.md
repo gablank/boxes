@@ -131,8 +131,14 @@ Branches are `aur/bump-YYYY-MM-DD-<run_id>-<publish_attempt>`; the eligibility
 status target URL binds the head SHA to that publisher attempt. Keep the branch
 format, `trigger-aur-review.py` payload/gates, and `.github/aur-vet-prompt.md` in
 sync, then deploy the prompt to Claude and remove the PR webhook. The caller
-checks live metadata and sends no PR text; the routine independently verifies
-CI jobs and must use an atomic expected-head-SHA merge. The token is isolated
+checks live metadata, requires the GitHub Actions integration on the status
+rule, and sends seven fixed identifiers plus a validated zero-context `diff`.
+It fetches Git objects without checking out the candidate and runs the trusted
+validator using an isolated index. No PR prose, discussion, commit message or
+unchanged source reaches the payload. Claude reviews only supplied changes
+and may make one atomic expected-head-SHA merge; all reads and other writes
+are forbidden by its prompt. This does not remove available tools or auto-loaded
+repository instructions: an enforced read boundary needs platform isolation. The token is isolated
 from the audit/publisher jobs. Do not add PR-controlled inputs, PR checkouts,
 redirects or automatic POST retries. The API is not idempotent; check the run
 list before rerunning a failed review job. Live main protection, Code Owner
