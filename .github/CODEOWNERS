@@ -1,43 +1,21 @@
-# Scope guard for the automated AUR bump.
+# Everything outside aur/ needs owner review when GitHub's Code Owner review
+# requirement is enabled. CODEOWNERS alone does not enforce that requirement.
+# Last matching entry wins; an empty owner list clears ownership.
 #
-# The nightly `aur-bump.yml` workflow opens a PR that the vetting routine may
-# merge without a human. Everything outside `aur/` therefore requires the repo
-# owner's review: a bump that somehow reached Containerfile.base or a workflow
-# would need an approval the automation cannot give itself. Last matching
-# pattern wins, and an entry with no owner clears ownership.
+# Outsiders can submit aur/-only PRs, but cannot start the scheduled/manual-main
+# AUR workflow or obtain its credentials. It binds bot author, same repository,
+# exact head SHA, labels and publisher status before review and before merging.
+# The status must be required from GitHub Actions with no workflow bypass.
 #
-# WHAT THIS DOES NOT DO. CODEOWNERS matches on path, never on author, so the
-# `/aur/` exemption below is equally open to a pull request from a stranger --
-# this repository is public and anyone can open one touching only `aur/`. This
-# file is not what stops that. The API caller checks eligibility in code before
-# starting the routine. Among the checks is this combination
-# that an ordinary outside contributor cannot satisfy:
-#   - the PR author is `github-actions[bot]`
-#   - the head repository is `gablank/boxes` (a fork can never satisfy this,
-#     and pushing a branch inside the repo needs write access)
-#   - the PR carries the `aur-bump` label (labelling needs triage/write access)
-# Those are checked in ordinary code before any diff is sent to Claude.
+# Candidate patches are published without checkout or execution. Mechanical
+# failures create needs-review drafts with a failing eligibility status. Claude
+# sees only the validated diff, has no tools/GitHub credential, and returns only
+# a verdict. A separate job owns the fixed-SHA merge or escaped failure comment.
 #
-# The caller sends only a validated zero-context diff and fixed identifiers.
-# The prompt forbids reading other content or changing labels, but does not
-# restrict the available tools or GitHub identity permissions. The merge-time gate is the
-# `aur-bump/eligible` commit status that `aur-bump.yml` posts on the branch it
-# creates: mark that context as a REQUIRED STATUS CHECK in branch protection and
-# GitHub refuses a merge lacking it when the merging identity cannot bypass the
-# rule. Other writers with status permission can post the same context; it is
-# not exclusive to this workflow. The caller requires the GitHub Actions app
-# binding; separately audit the merger's bypass and administration permissions.
-#
-# If you would rather not rely on unattended merging at all, delete the `/aur/`
-# line. Every bump then needs your approval -- one click on a PR that already
-# carries a written audit.
-#
-# INERT WITHOUT REPO SETTINGS. Nothing here applies until branch protection on
-# `main` enables "Require a pull request before merging" + "Require review from
-# Code Owners", and (for the status above) "Require status checks to pass" with
-# `aur-bump/eligible` selected. A status-only ruleset does not enable Code Owner
-# enforcement. Audit bypass rights explicitly: automation using the owner's
-# identity can inherit the owner's bypass permissions.
+# This exception permits unattended routine bumps when configured with matching
+# review rules. It does not make arbitrary changes under aur/ safe. Human-reviewed
+# drafts need a separate authorized merge path. Keep human bypass credentials
+# separate from cloud agents, and protect workflow/script/policy changes.
 
 *       @gablank
 
