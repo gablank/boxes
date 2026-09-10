@@ -9,7 +9,7 @@ name: AUR bump
 # they serialize on the `build-images` concurrency group, so a nightly build
 # still running when this PR merges delays the merge's build behind it.
 #
-# STRUCTURE, and why it is two jobs. Everything this workflow processes --
+# STRUCTURE. Everything this workflow processes --
 # PKGBUILD contents, and the *names* of the files in them -- is written by AUR
 # package maintainers, i.e. by people outside this repository. The 2026-09-08
 # security review found that treating that as trusted input gave arbitrary code
@@ -21,6 +21,8 @@ name: AUR bump
 #            open a PR, or post a status even if it is compromised.
 #   publish  holds the write tokens, runs only when audit says PASS, and
 #            re-validates the patch it receives rather than trusting the verdict.
+#   review   holds only a read token and the environment-scoped routine token;
+#            calls Claude only after publish succeeds, without PR text or recipes.
 #
 # Two rules keep that boundary real, and both are load-bearing:
 #
@@ -48,7 +50,7 @@ on:
 # No ambient permissions; each job asks for exactly what it needs.
 permissions: {}
 
-# Never let two bumps race for the same branch name.
+# Serialize publishers; branch names also include run ID + attempt for reruns.
 concurrency:
   group: aur-bump
   cancel-in-progress: false
@@ -58,6 +60,9 @@ jobs:
   # Untrusted half. Read-only token, no persisted credentials.
   # ---------------------------------------------------------------------------
   audit:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -285,8 +290,14 @@ jobs:
     if: >-
       needs.audit.outputs.changed == 'true' &&
       needs.audit.outputs.verdict == 'PASS' &&
-      github.ref == 'refs/heads/main'
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
+    outputs:
+      pr_number: ${{ steps.pr.outputs.pr_number }}
+      head_sha: ${{ steps.pr.outputs.head_sha }}
+      branch: ${{ steps.pr.outputs.branch }}
+      publish_attempt: ${{ steps.pr.outputs.publish_attempt }}
     permissions:
       contents: write
       pull-requests: write
@@ -326,7 +337,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          branch="aur/bump-$(date -u +%Y-%m-%d)"
+          branch="aur/bump-$(date -u +%Y-%m-%d)-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
@@ -368,7 +379,8 @@ jobs:
             --base main --head "$branch" \
             --label aur-bump)"
           echo "Opened $url"
-          echo "url=$url" >> "$GITHUB_OUTPUT"
+          pr_number="${url##*/}"
+          [[ "$pr_number" =~ ^[1-9][0-9]*$ ]]
 
           # Proof of provenance that GitHub itself can enforce, posted on the
           # exact reviewed commit.
@@ -382,5 +394,42 @@ jobs:
           gh api --method POST "repos/${REPO}/statuses/${head_sha}" \
             -f state=success \
             -f context='aur-bump/eligible' \
+            -f target_url="https://github.com/${REPO}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}" \
             -f description='Branch was created by the nightly AUR bump workflow' >/dev/null
           echo "Posted aur-bump/eligible on $head_sha"
+          {
+            printf 'pr_number=%s\n' "$pr_number"
+            printf 'head_sha=%s\n' "$head_sha"
+            printf 'branch=%s\n' "$branch"
+            printf 'publish_attempt=%s\n' "$GITHUB_RUN_ATTEMPT"
+          } >> "$GITHUB_OUTPUT"
+
+  review:
+    needs: publish
+    if: >-
+      needs.publish.result == 'success' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    # Configure this environment to allow the main BRANCH only (no tags).
+    # Keep the routine token here, never at repository scope. See aur/README.md.
+    environment: aur-review
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate publisher metadata and trigger the review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUR_REVIEW_ROUTINE_ID: ${{ vars.AUR_REVIEW_ROUTINE_ID }}
+          AUR_REVIEW_ROUTINE_TOKEN: ${{ secrets.AUR_REVIEW_ROUTINE_TOKEN }}
+          PR_NUMBER: ${{ needs.publish.outputs.pr_number }}
+          HEAD_SHA: ${{ needs.publish.outputs.head_sha }}
+          BUMP_BRANCH: ${{ needs.publish.outputs.branch }}
+          PUBLISH_ATTEMPT: ${{ needs.publish.outputs.publish_attempt }}
+        run: python3 scripts/trigger-aur-review.py
