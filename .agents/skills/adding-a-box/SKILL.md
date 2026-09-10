@@ -33,6 +33,9 @@ Complete checklist for adding a new box (e.g., `dev`). Every step is required un
 
 In `.github/workflows/build.yml`:
 
+Quote step names containing `: `; otherwise GitHub rejects the workflow as invalid
+YAML before any lint job can run.
+
 - **Path filter** — add to the `dorny/paths-filter` `filters:` block:
   ```yaml
   dev:

@@ -192,6 +192,10 @@ The completion heredocs **interpolate** the command lists from the arrays at run
 
 The `build-base` and `build-boxes` jobs `needs: lint`, so a failed lint cannot coexist with newly published images.
 
+Quote workflow step names containing `: ` — invalid YAML prevents the workflow
+from starting, including its own lint job. GitHub reports this as an invalid
+workflow with zero jobs, rather than a failed lint step.
+
 ## Local checks
 
 There is no test suite; the CI `lint` job is the only gate. Mirror it locally before pushing. The `dev` box ships `shellcheck` (added in `dev/Containerfile`) so the static-analysis step below runs out of the box:
