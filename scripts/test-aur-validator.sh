@@ -98,6 +98,41 @@ m_skip_to_real_checksum() {
   sed -i "s/^sha256sums=.*/sha256sums=('3333333333333333333333333333333333333333333333333333333333333333')/" "$1/aur/demo-bin/PKGBUILD"
 }
 
+# Cursor keeps SKIP in the initial array and overwrites it with a literal hash.
+b_indexed_checksum() {
+  printf "\nsha512sums=('SKIP')\nsha512sums[0]=%0128d\n" 0 >> "$1/aur/demo-bin/PKGBUILD"
+}
+
+m_indexed_checksum() {
+  sed -i '/^sha512sums\[0\]=/d' "$1/aur/demo-bin/PKGBUILD"
+  printf 'sha512sums[0]=%0128d\n' 1 >> "$1/aur/demo-bin/PKGBUILD"
+}
+
+m_indexed_checksum_quoted() {
+  sed -i '/^sha512sums\[0\]=/d' "$1/aur/demo-bin/PKGBUILD"
+  printf "sha512sums[0]='%0128d'\n" 1 >> "$1/aur/demo-bin/PKGBUILD"
+}
+
+m_indexed_checksum_double_quoted() {
+  sed -i '/^sha512sums\[0\]=/d' "$1/aur/demo-bin/PKGBUILD"
+  printf 'sha512sums[0]="%0128d"\n' 1 >> "$1/aur/demo-bin/PKGBUILD"
+}
+
+m_indexed_checksum_hostile() {
+  local d="$1" payload
+  sed -i '/^sha512sums\[0\]=/d' "$d/aur/demo-bin/PKGBUILD"
+  case "$INDEXED_ATTACK" in
+    subscript) payload='sha512sums[$(touch MARKER)]=00000000000000000000000000000000' ;;
+    variable) payload='sha512sums[index]=00000000000000000000000000000000' ;;
+    arithmetic) payload='sha512sums[1+1]=00000000000000000000000000000000' ;;
+    value) payload='sha512sums[0]=$(touch MARKER)' ;;
+    appended) payload='sha512sums[0]=00000000000000000000000000000000; touch MARKER' ;;
+    continuation) payload='sha512sums[0]=00000000000000000000000000000000\' ;;
+    skip) payload="sha512sums[0]='SKIP'" ;;
+  esac
+  printf '%s\n' "$payload" >> "$d/aur/demo-bin/PKGBUILD"
+}
+
 # --- finding 2: executable syntax hiding on a routine-looking line --------
 
 m_command_substitution() {
@@ -161,6 +196,14 @@ echo "  routine bumps that must validate:"
 expect PASS "ordinary version + checksum + manifest bump" m_ordinary_bump
 expect PASS "pkgrel-only rebuild"                         m_pkgrel_only
 expect PASS "SKIP replaced by a real checksum"            m_skip_to_real_checksum b_checksum_is_skip
+expect PASS "Cursor-style indexed checksum bump"         m_indexed_checksum b_indexed_checksum
+expect PASS "single-quoted indexed checksum"              m_indexed_checksum_quoted b_indexed_checksum
+expect PASS "double-quoted indexed checksum"              m_indexed_checksum_double_quoted b_indexed_checksum
+echo
+echo "  indexed checksums must remain literal:"
+for INDEXED_ATTACK in subscript variable arithmetic value appended continuation skip; do
+  expect FAIL "indexed checksum: $INDEXED_ATTACK" m_indexed_checksum_hostile b_indexed_checksum
+done
 echo
 echo "  finding 2 -- executable syntax on routine-looking lines:"
 expect FAIL "pkgver with command substitution"            m_command_substitution
