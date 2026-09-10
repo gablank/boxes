@@ -23,9 +23,28 @@ import urllib.request
 GITHUB_ACTIONS_APP_ID = 15368
 MAX_PATCH = 16 * 1024 * 1024
 MAX_DIFF = 128 * 1024
+REVIEW_ERRORS = {
+    "oauth_missing": "Claude OAuth secret is missing or contains a line break; check CLAUDE_CODE_OAUTH_TOKEN in the aur-review environment.",
+    "authentication": "Claude authentication failed; verify the secret was generated with claude setup-token and has not expired or been revoked.",
+    "access_denied": "Claude access was denied; check subscription and model access.",
+    "usage_limit": "Claude reported a usage or rate limit; check subscription usage before starting a new run.",
+    "service": "Claude reported a service error; check service availability before starting a new run.",
+    "cli_arguments": "Claude rejected its command-line arguments; check the pinned CLI version and isolation flags.",
+    "launch": "Claude could not be launched; check the CLI installation and runner configuration.",
+    "timeout": "Claude review timed out after 600 seconds; no retry was attempted.",
+    "process": "Claude exited unsuccessfully without a recognized error category; raw output was withheld.",
+    "envelope": "Claude returned an invalid or unsuccessful CLI result envelope; no verdict was accepted.",
+    "verdict": "Claude returned an invalid verdict; expected only verdict (PASS or FAIL) and a nonempty reason.",
+}
 
 class ReviewRejected(Exception):
     """A fixed diagnostic safe to print in public CI logs."""
+
+
+class ClaudeFailure(ReviewRejected):
+    def __init__(self, code):
+        self.code = code
+        super().__init__(REVIEW_ERRORS[code])
 
 
 def require(condition, message):
@@ -321,7 +340,8 @@ def validate_verdict(value):
 
 
 def run_claude(request, prompt, token, runner=subprocess.run):
-    require(token and "\n" not in token and "\r" not in token, "Missing Claude subscription OAuth secret")
+    if not token or "\n" in token or "\r" in token:
+        raise ClaudeFailure("oauth_missing")
     with tempfile.TemporaryDirectory(prefix="aur-claude-") as tmp:
         cwd = Path(tmp) / "empty"
         cwd.mkdir()
@@ -333,13 +353,39 @@ def run_claude(request, prompt, token, runner=subprocess.run):
                    "--setting-sources", "", "--disable-slash-commands", "--no-session-persistence",
                    "--permission-mode", "dontAsk", "--max-turns", "1", "--output-format", "json",
                    "--model", "opus", "--system-prompt", prompt]
-        result = runner(command, input=request["diff"], text=True, capture_output=True,
-                        cwd=cwd, env=env, timeout=600)
-        require(result.returncode == 0, "Claude process failed; inspect authentication and usage limits")
-        envelope = strict_json(result.stdout)
-        require(envelope.get("type") == "result" and envelope.get("subtype") == "success"
-                and envelope.get("is_error") is False, "Claude did not return a successful result")
-        return validate_verdict(strict_json(envelope["result"]))
+        try:
+            result = runner(command, input=request["diff"], text=True, capture_output=True,
+                            cwd=cwd, env=env, timeout=600)
+        except subprocess.TimeoutExpired:
+            raise ClaudeFailure("timeout") from None
+        except OSError:
+            raise ClaudeFailure("launch") from None
+        try:
+            envelope = strict_json(result.stdout)
+        except (ValueError, ReviewRejected):
+            envelope = None
+        successful = (isinstance(envelope, dict) and envelope.get("type") == "result"
+                      and envelope.get("subtype") == "success" and envelope.get("is_error") is False)
+        if result.returncode != 0 or not successful:
+            # Classify locally; never echo arbitrary CLI/model text or session metadata.
+            print(f"Claude process exit code: {result.returncode}")
+            status = envelope.get("api_error_status") if isinstance(envelope, dict) else None
+            detail = (result.stdout + "\n" + result.stderr).lower()
+            if status == 401 or any(s in detail for s in ("not logged in", "invalid oauth", "oauth token has expired", "authentication_error")):
+                raise ClaudeFailure("authentication")
+            if status == 403:
+                raise ClaudeFailure("access_denied")
+            if status == 429 or any(s in detail for s in ("rate_limit_error", "usage limit", "hit your limit")):
+                raise ClaudeFailure("usage_limit")
+            if type(status) is int and 500 <= status <= 599:
+                raise ClaudeFailure("service")
+            if any(s in result.stderr.lower() for s in ("unknown option", "unknown argument", "error: option")):
+                raise ClaudeFailure("cli_arguments")
+            raise ClaudeFailure("process" if result.returncode else "envelope")
+        try:
+            return validate_verdict(strict_json(envelope["result"]))
+        except (ReviewRejected, ValueError, KeyError, TypeError):
+            raise ClaudeFailure("verdict") from None
 
 
 def review(incoming, out):
@@ -350,11 +396,13 @@ def review(incoming, out):
     require(hashlib.sha256(prompt.read_bytes()).hexdigest() == data["prompt_sha256"], "Review prompt changed")
     try:
         decision = run_claude(data, prompt.read_text(), os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", ""))
-    except (ReviewRejected, ValueError, KeyError, TypeError, OSError, subprocess.TimeoutExpired):
-        decision = {"verdict": "ERROR", "reason": "Claude review failed or returned invalid output. No merge attempted; check the review job and OAuth secret."}
+    except ClaudeFailure as error:
+        decision = {"verdict": "ERROR", "reason": str(error)}
+        print(f"Claude review error [{error.code}]: {error}", file=sys.stderr)
     out.write_text(json.dumps({"request_sha256": digest(data), **decision}))
-    # Never print model output, OAuth errors or session details into public logs.
+    # Never print raw model output, OAuth errors or session details into public logs.
     print("Isolated review completed: " + decision["verdict"])
+    return 1 if decision["verdict"] == "ERROR" else 0
 
 
 def finish(result_file, request=api, diff=prepare_diff):
@@ -368,6 +416,8 @@ def finish(result_file, request=api, diff=prepare_diff):
                 and record["request_sha256"] == digest(data), "Review does not match this exact change and prompt")
         if record["verdict"] != "ERROR":
             decision = validate_verdict({"verdict": record["verdict"], "reason": record["reason"]})
+        elif record["reason"] in REVIEW_ERRORS.values():
+            decision = {"verdict": "ERROR", "reason": record["reason"]}
     except (ReviewRejected, ValueError, KeyError, TypeError, OSError, subprocess.TimeoutExpired):
         pass
     if decision["verdict"] != "PASS":
@@ -411,7 +461,7 @@ def main():
         elif args.phase == "prepare":
             prepare(args.output)
         elif args.phase == "review":
-            review(args.input, args.output)
+            return review(args.input, args.output)
         else:
             finish(args.input)
     except (ReviewRejected, ValueError, KeyError, TypeError, OSError, subprocess.SubprocessError) as error:

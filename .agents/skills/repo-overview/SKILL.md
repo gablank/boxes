@@ -21,6 +21,12 @@ This repo defines distrobox container environments built via CI and managed loca
 
 ## Key directories
 
+Review execution/output errors fail the job, but the result artifact must still
+upload so finish can leave a diagnostic comment. Logs and ERROR comments use
+fixed diagnostics, never raw CLI output or session data. Keep the error
+allowlist, request binding, artifact failure condition and regression tests in
+sync; see `aur/README.md` for recovery using a fresh run on main.
+
 | Path | Purpose |
 |------|---------|
 | `Containerfile.base` | Shared base image definition |
