@@ -221,6 +221,42 @@ class ReviewTests(unittest.TestCase):
                 trigger.run_claude({"diff": "diff"}, "policy", "oauth-test", runner)
             self.assertEqual(len(calls), 1)
 
+    def test_cli_errors_are_classified_without_exposing_raw_output(self):
+        cases = [
+            (401, "PRIVATE TOKEN", "", "authentication"),
+            (None, "Not logged in · Please run /login PRIVATE TOKEN", "", "authentication"),
+            (403, "PRIVATE TOKEN", "", "access_denied"),
+            (429, "PRIVATE TOKEN", "", "usage_limit"),
+            (503, "PRIVATE TOKEN", "", "service"),
+            (None, "PRIVATE TOKEN", "error: unknown option '--private'", "cli_arguments"),
+            (None, "PRIVATE TOKEN", "PRIVATE STDERR", "process"),
+        ]
+        for status, message, stderr, code in cases:
+            with self.subTest(code=code):
+                def runner(command, **kwargs):
+                    return subprocess.CompletedProcess(command, 1, json.dumps({
+                        "type": "result", "is_error": True, "api_error_status": status,
+                        "result": message, "session_id": "PRIVATE SESSION"}), stderr)
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output), self.assertRaises(trigger.ClaudeFailure) as caught:
+                    trigger.run_claude({"diff": "diff"}, "policy", "oauth-test", runner)
+                self.assertEqual(caught.exception.code, code)
+                self.assertNotIn("PRIVATE", output.getvalue() + str(caught.exception))
+
+    def test_failed_review_writes_bound_diagnostic_and_exits_nonzero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            incoming, out = Path(tmp) / "request.json", Path(tmp) / "result.json"
+            data = trigger.review_request(trigger.context(environment()), lambda ctx: "diff")
+            incoming.write_text(json.dumps(data))
+            output = io.StringIO()
+            with patch.dict(os.environ, environment()), patch.object(trigger, "run_claude", side_effect=trigger.ClaudeFailure("authentication")), contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+                with patch.object(sys, "argv", ["aur-review.py", "review", "--input", str(incoming), "--output", str(out)]):
+                    self.assertEqual(trigger.main(), 1)
+            record = json.loads(out.read_text())
+            self.assertEqual(record, {"request_sha256": trigger.digest(data), "verdict": "ERROR",
+                                     "reason": trigger.REVIEW_ERRORS["authentication"]})
+            self.assertIn("[authentication]", output.getvalue())
+
 
 class FinishTests(unittest.TestCase):
     def setUp(self):
@@ -304,6 +340,17 @@ class FinishTests(unittest.TestCase):
                 self.finish()
                 self.assertFalse(any(e.endswith("/merge") for e, _, _ in self.writes()))
                 self.assertTrue(any(e.endswith("/comments") for e, _, _ in self.writes()))
+
+    def test_error_comments_only_accept_known_diagnostics(self):
+        for reason in (trigger.REVIEW_ERRORS["authentication"], "PRIVATE RAW ERROR"):
+            self.calls = []
+            self.write_result("ERROR", reason=reason)
+            self.finish()
+            comment = next(d["body"] for e, d, _ in self.writes() if e.endswith("/comments"))
+            self.assertNotIn("PRIVATE RAW ERROR", comment)
+            if reason in trigger.REVIEW_ERRORS.values():
+                self.assertIn(reason, comment)
+            self.assertFalse(any(e.endswith("/merge") for e, _, _ in self.writes()))
 
     def test_metadata_changes_and_forgery_stop_all_writes(self):
         cases = [("user.login", "attacker"), ("user.type", "User"), ("head.repo.full_name", "attacker/boxes"),
@@ -390,6 +437,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("outputs.eligible == 'true'", jobs["prepare"]["if"])
         self.assertEqual(jobs["review"]["needs"], "prepare")
         self.assertEqual(jobs["review"]["environment"], "aur-review")
+        upload = next(s for s in jobs["review"]["steps"] if s.get("with", {}).get("name") == "aur-review-result")
+        self.assertEqual(upload["if"], "${{ !cancelled() }}")
         self.assertEqual(set(jobs["finish"]["needs"]), {"publish","prepare","review"})
         self.assertIn("always() && !cancelled()", jobs["finish"]["if"])
         self.assertFalse(jobs["finish"]["steps"][0]["with"]["persist-credentials"])
