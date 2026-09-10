@@ -77,7 +77,11 @@ if any of them fails. Step 2 is enforced there by `scripts/validate-aur-diff.py`
 a deterministic validator: every changed line must match an exact literal shape
 (a version, a checksum, a manifest row) and anything else fails the run. It never
 sources or executes the candidate recipe. `scripts/test-aur-validator.sh` holds
-its adversarial regression tests and runs in CI.
+its positive and adversarial regression tests and runs in CI. Literal indexed
+checksum assignments such as Cursor's `sha512sums[0]=<hash>` are routine too:
+the index must be a decimal integer and the checksum a literal value. Expressions
+or variable names in an index are rejected because Bash evaluates array indexes
+as arithmetic; adding `SKIP` remains forbidden.
 
 The workflow is split so that the half handling upstream-controlled content holds
 no write token at all (`contents: read`, `persist-credentials: false`); a

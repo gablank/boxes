@@ -188,7 +188,7 @@ The completion heredocs **interpolate** the command lists from the arrays at run
 - Every `box <cmd>` invocation documented in `README.md`, `AGENTS.md`, the skills, and `setup.sh` exists in `_BOX_COMMANDS` (catches stale command names in docs)
 - `shellcheck --severity=error` passes on `bin/box`, `scripts/*.sh`, and `setup.sh`
 - **No workflow interpolates `${{ }}` into a `run:` block** (`scripts/check-workflow-injection.py`). Actions splices those into the script *source* before bash parses it, so an expression carrying untrusted text is a shell injection — bind it in `env:` and use `"$VAR"` instead. This is a real bug that shipped here, not a hypothetical
-- **The AUR diff validator still rejects the known attack shapes** (`scripts/test-aur-validator.sh`) — command substitution and appended commands on `pkgver=`/checksum lines, checksums downgraded to `SKIP`, added scriptlets, symlinked or executable PKGBUILDs, hostile filenames
+- **The AUR diff validator accepts routine bumps and rejects the known attack shapes** (`scripts/test-aur-validator.sh`) — includes Cursor's literal indexed checksums (`sha512sums[0]=<hash>`); indexes must be decimal integers, never variables or arithmetic expressions. Rejection cases cover command substitution and appended commands on `pkgver=`/checksum lines, checksums downgraded to `SKIP`, added scriptlets, symlinked or executable PKGBUILDs, hostile filenames
 
 The `build-base` and `build-boxes` jobs `needs: lint`, so a failed lint cannot coexist with newly published images.
 

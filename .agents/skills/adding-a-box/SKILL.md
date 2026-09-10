@@ -39,9 +39,13 @@ In `.github/workflows/build.yml`:
     - 'dev/**'
   ```
 
-- **Variable + force-true** — in the `Compute build flags` step, add:
+- **Variable + force-true** — in the `Compute build flags` step, bind the output in `env:`:
+  ```yaml
+  FILTER_DEV: ${{ steps.filter.outputs.dev }}
+  ```
+  Then read it in `run:` (never interpolate an Actions expression into shell source):
   ```bash
-  dev="${{ steps.filter.outputs.dev }}"
+  dev="$FILTER_DEV"
   ```
   and append `&& dev=true` to the force line.
 
