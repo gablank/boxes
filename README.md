@@ -239,6 +239,13 @@ box vendor-aur <pkgbase>   # clones from the AUR, prints a diff to vet
 # review the diff, then: git add aur/ && git commit
 ```
 
+Nightly bumps pass mechanical audit gates, open a PR, then explicitly request
+a Claude review through its routine API. Setup requires the main-only
+`aur-review` GitHub environment and deployment of the reviewed routine prompt;
+see [AUR review setup and recovery](aur/README.md#where-the-vetter-lives).
+PR events cannot start the API caller. Same-day reruns use unique branch names
+and never overwrite a commit already under review.
+
 ### Add a package to one box
 
 Edit that box's `Containerfile` (`priv/Containerfile` or `work/Containerfile`).
@@ -325,6 +332,8 @@ local-bin/              Scripts installed into ALL boxes
 scripts/
   check-workflow-yaml.py Parses workflow YAML locally, for pushed commits, and in CI
   test-workflow-yaml.py  Local Git push regression tests for YAML validation
+  trigger-aur-review.py  Validate publisher metadata and call the Claude routine API
+  test-aur-review-trigger.py Offline security tests for the review handoff
   init-root.sh          First-start root init (chsh, /etc/environment)
   init-user.sh          First-start user init (~/.ssh, .zshrc, rustup, ~/.codex/AGENTS.md)
   shell-init.sh         Sourced from .zshrc on every shell open (interactive)
@@ -338,5 +347,5 @@ host-systemd/           Host user units (hourly image pre-fetch), installed on t
 setup.sh                One-shot setup script for new users
 .github/workflows/
   build.yml             CI build and cleanup
-  aur-bump.yml          Nightly AUR PKGBUILD re-vendor, opens a PR
+  aur-bump.yml          Nightly AUR audit, PR publication, and explicit Claude review request
 ```
