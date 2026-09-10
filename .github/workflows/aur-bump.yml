@@ -22,7 +22,8 @@ name: AUR bump
 #   publish  holds the write tokens, runs only when audit says PASS, and
 #            re-validates the patch it receives rather than trusting the verdict.
 #   review   holds only a read token and the environment-scoped routine token;
-#            calls Claude only after publish succeeds, without PR text or recipes.
+#            calls Claude after publish succeeds, with a validated zero-context diff
+#            and fixed identifiers, without PR prose or unchanged recipe text.
 #
 # Two rules keep that boundary real, and both are load-bearing:
 #

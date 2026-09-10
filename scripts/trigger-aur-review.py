@@ -3,16 +3,22 @@
 
 Runs only in aur-bump.yml's review job, after audit + publish succeed. The
 aur-review environment must restrict its token to the main branch. This script
-adds a deterministic metadata gate; the routine must independently repeat it.
-No candidate checkout, recipe execution, redirects, or automatic POST retries.
+checks eligibility and the required status integration, then sends only a
+validated zero-context diff plus fixed identifiers. No candidate checkout,
+recipe execution, PR prose, redirects, or automatic POST retries.
 """
 
 import json
 import os
+from pathlib import Path
 import re
+import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.request
+
+GITHUB_ACTIONS_APP_ID = 15368  # github.com/apps/github-actions (public GitHub only)
 
 
 class ReviewRejected(Exception):
@@ -70,12 +76,63 @@ def validate_pr(ctx, pr, statuses):
     require(pr["head"]["ref"] == ctx["head_branch"]
             and pr["head"]["sha"] == ctx["head_sha"], "Publisher branch or commit changed")
     require("aur-bump" in [label["name"] for label in pr["labels"]], "Missing aur-bump label")
+    require("needs-review" not in [label["name"] for label in pr["labels"]], "PR is held for human review")
     # GitHub lists statuses newest first. Never accept an old success after a
     # newer failure, even when the old target URL matches this run.
     status = next((s for s in statuses if s["context"] == "aur-bump/eligible"), None)
     require(status is not None and status["state"] == "success"
             and status["creator"]["login"] == "github-actions[bot]"
             and status["target_url"] == run_url(ctx), "Missing or mismatched publisher status")
+
+
+def validate_rules(rules):
+    require(any(
+        check.get("context") == "aur-bump/eligible"
+        and check.get("integration_id") == GITHUB_ACTIONS_APP_ID
+        for rule in rules if rule.get("type") == "required_status_checks"
+        for check in rule.get("parameters", {}).get("required_status_checks", [])
+    ), "main must require aur-bump/eligible from the GitHub Actions app")
+
+
+def git(repo, *args, env=None):
+    result = subprocess.run(["git", "-C", str(repo), *args], env=env,
+                            capture_output=True, text=True, timeout=60)
+    require(result.returncode == 0, "Could not inspect the published Git objects")
+    return result.stdout
+
+
+def build_diff(ctx, repo):
+    source, head = ctx["source_sha"], ctx["head_sha"]
+    require(git(repo, "rev-parse", "HEAD").strip() == source, "Checkout is not the publisher source")
+    require(git(repo, "rev-list", "--parents", "-n", "1", head).split() == [head, source],
+            "Candidate must be one commit directly on the publisher source")
+    paths = git(repo, "diff", "--name-only", "--no-renames", "-z", source, head, "--").split("\0")[:-1]
+    require(paths and all(p == "aur/manifest.tsv" or re.fullmatch(
+        r"aur/[a-z0-9][a-z0-9._+-]*/PKGBUILD", p) for p in paths), "Candidate changed disallowed paths")
+    # The isolated index makes the existing staged-diff validator inspect the
+    # entire candidate without checking out or executing any candidate files.
+    with tempfile.TemporaryDirectory(prefix="aur-review-index-") as tmp:
+        env = {**os.environ, "GIT_INDEX_FILE": str(Path(tmp) / "index")}
+        git(repo, "read-tree", head, env=env)
+        validator = Path(__file__).resolve().with_name("validate-aur-diff.py")
+        result = subprocess.run([sys.executable, str(validator), "--repo", str(repo)],
+                                env=env, capture_output=True, timeout=60)
+        require(result.returncode == 0, "Published changes failed the trusted literal-diff validator")
+    patch = git(repo, "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--no-color",
+                "--unified=0", "--inter-hunk-context=0", "--no-function-context",
+                "--src-prefix=a/", "--dst-prefix=b/", source, head, "--")
+    # Git adds a nearby function/declaration to @@ headers even with -U0.
+    # Strip that context too; only changed lines and diff metadata may survive.
+    patch = re.sub(r"^(@@ [^\n]*? @@)[^\n]*$", r"\1", patch, flags=re.MULTILINE)
+    require(patch and not any(line.startswith(" ") for line in patch.splitlines()),
+            "Unexpected unchanged context in review diff")
+    return patch
+
+
+def prepare_diff(ctx):
+    git(".", "-c", "core.hooksPath=/dev/null", "fetch", "--no-tags", "--no-write-fetch-head",
+        f'https://github.com/{ctx["repository"]}.git', ctx["head_sha"])
+    return build_diff(ctx, Path.cwd())
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -94,7 +151,7 @@ def request_json(url, token, payload=None):
         return json.load(response)
 
 
-def trigger(env, request=request_json):
+def trigger(env, request=request_json, diff=prepare_diff):
     ctx = context(env)
     routine_id = env.get("AUR_REVIEW_ROUTINE_ID", "")
     require(re.fullmatch(r"trig_[A-Za-z0-9]+", routine_id), "Set AUR_REVIEW_ROUTINE_ID in aur-review")
@@ -107,9 +164,13 @@ def trigger(env, request=request_json):
     statuses = request(f'{api}/commits/{ctx["head_sha"]}/statuses?per_page=100', env["GH_TOKEN"])
     # If the status is not in the latest 100, fail closed rather than guessing.
     validate_pr(ctx, pr, statuses)
+    validate_rules(request(f"{api}/rules/branches/main", env["GH_TOKEN"]))
+    payload = {**ctx, "diff": diff(ctx)}
+    text = json.dumps(payload, sort_keys=True)
+    require(len(text.encode("utf-8")) <= 65536, "Review payload exceeds the API limit; human review required")
     print("Review target: " + json.dumps(ctx, sort_keys=True))
     result = request(f"https://api.anthropic.com/v1/claude_code/routines/{routine_id}/fire", token,
-                     {"text": json.dumps(ctx, sort_keys=True)})
+                     {"text": text})
     session_id = result.get("claude_code_session_id", "")
     session_url = result.get("claude_code_session_url", "")
     require(result.get("type") == "routine_fire"
@@ -132,7 +193,7 @@ def main():
         print(f"Review request failed: HTTP {error.code}. Check the routine run list before retrying.",
               file=sys.stderr)
         return 1
-    except (ValueError, KeyError, TypeError, StopIteration, OSError):
+    except (ValueError, KeyError, TypeError, StopIteration, OSError, subprocess.TimeoutExpired):
         print("Review request failed: configuration, metadata, or transport check failed. "
               "No automatic retry; check the routine run list before rerunning the failed job.",
               file=sys.stderr)

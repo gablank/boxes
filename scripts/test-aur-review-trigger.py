@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
 import urllib.error
 import urllib.request
@@ -46,7 +47,13 @@ class ReviewTriggerTests(unittest.TestCase):
                        "creator": {"login": "github-actions[bot]"},
                        "target_url": "https://github.com/example/boxes/actions/runs/123/attempts/1"}
         self.statuses = [self.status]
+        self.rules = [{"type": "required_status_checks", "parameters": {"required_status_checks": [
+            {"context": "aur-bump/eligible", "integration_id": 15368}]}}]
+        self.patch = "diff --git a/aur/demo/PKGBUILD b/aur/demo/PKGBUILD\n@@ -1 +1 @@\n-pkgver=1.0\n+pkgver=1.1\n"
         self.calls = []
+
+    def run_trigger(self, request=None):
+        return trigger.trigger(self.env, request or self.request, lambda ctx: self.patch)
 
     def request(self, url, token, payload=None):
         self.calls.append((url, token, payload))
@@ -54,25 +61,27 @@ class ReviewTriggerTests(unittest.TestCase):
             return self.pr
         if "/statuses?" in url:
             return self.statuses
+        if "/rules/branches/" in url:
+            return self.rules
         return {"type": "routine_fire", "claude_code_session_id": "session_test",
                 "claude_code_session_url": "https://claude.ai/code/session_test"}
 
     def assert_no_post(self):
         with self.assertRaises((trigger.ReviewRejected, KeyError, TypeError)):
-            trigger.trigger(self.env, self.request)
+            self.run_trigger()
         self.assertFalse(any(payload is not None for _, _, payload in self.calls))
 
-    def test_success_sends_only_fixed_metadata(self):
+    def test_success_sends_only_fixed_metadata_and_diff(self):
         log = io.StringIO()
         with contextlib.redirect_stdout(log):
-            self.assertEqual(trigger.trigger(self.env, self.request), "https://claude.ai/code/session_test")
+            self.assertEqual(self.run_trigger(), "https://claude.ai/code/session_test")
         self.assertNotIn("token", log.getvalue())
         self.assertNotIn("IGNORE", log.getvalue())
         self.assertNotIn("session_test", log.getvalue())
         url, token, payload = self.calls[-1]
         self.assertEqual(url, "https://api.anthropic.com/v1/claude_code/routines/trig_example/fire")
         self.assertEqual(token, "test-routine-token")
-        self.assertEqual(json.loads(payload["text"]), trigger.context(self.env))
+        self.assertEqual(json.loads(payload["text"]), {**trigger.context(self.env), "diff": self.patch})
         self.assertNotIn("IGNORE", payload["text"])
         self.assertNotIn("Forged", payload["text"])
         self.assertTrue(all(t == "test-github-token" for _, t, _ in self.calls[:-1]))
@@ -98,7 +107,8 @@ class ReviewTriggerTests(unittest.TestCase):
                  ("base.repo.full_name", "attacker/boxes"), ("base.ref", "other"),
                  ("head.sha", "c" * 40), ("head.ref", "aur/bump-2026-09-10-999-1"),
                  ("state", "closed"), ("merged", True), ("draft", True),
-                 ("number", 666), ("labels", [])]
+                 ("number", 666), ("labels", []),
+                 ("labels", [{"name": "aur-bump"}, {"name": "needs-review"}])]
         original = copy.deepcopy(self.pr)
         for path, value in cases:
             with self.subTest(path=path):
@@ -126,8 +136,28 @@ class ReviewTriggerTests(unittest.TestCase):
         self.env["GITHUB_EVENT_NAME"] = "workflow_dispatch"
         self.env["GITHUB_RUN_ATTEMPT"] = "2"
         with contextlib.redirect_stdout(io.StringIO()):
-            trigger.trigger(self.env, self.request)
+            self.run_trigger()
         self.assertEqual(json.loads(self.calls[-1][2]["text"])["publish_attempt"], 1)
+
+    def test_missing_or_unbound_rules_block_the_api_call(self):
+        for checks in ([], [{"context": "aur-bump/eligible"}],
+                       [{"context": "aur-bump/eligible", "integration_id": 999}],
+                       [{"context": "other", "integration_id": 15368}]):
+            with self.subTest(checks=checks):
+                self.rules = [{"type": "required_status_checks", "parameters": {"required_status_checks": checks}}]
+                self.calls = []
+                self.assert_no_post()
+
+    def test_oversize_payload_is_rejected_without_truncation(self):
+        self.patch = "x" * 65536
+        self.assert_no_post()
+
+    def test_invalid_diff_stops_before_post(self):
+        def bad_diff(ctx):
+            raise trigger.ReviewRejected("invalid diff")
+        with self.assertRaises(trigger.ReviewRejected):
+            trigger.trigger(self.env, self.request, bad_diff)
+        self.assertFalse(any(payload is not None for _, _, payload in self.calls))
 
     def test_timeout_does_not_retry_post(self):
         def timeout(url, token, payload=None):
@@ -136,7 +166,7 @@ class ReviewTriggerTests(unittest.TestCase):
                 raise TimeoutError("ambiguous acceptance")
             return result
         with self.assertRaises(TimeoutError), contextlib.redirect_stdout(io.StringIO()):
-            trigger.trigger(self.env, timeout)
+            self.run_trigger(timeout)
         self.assertEqual(sum(p is not None for _, _, p in self.calls), 1)
 
     def test_http_failure_does_not_retry_or_print_response(self):
@@ -149,7 +179,7 @@ class ReviewTriggerTests(unittest.TestCase):
             return result
         log = io.StringIO()
         with self.assertRaises(urllib.error.HTTPError), contextlib.redirect_stdout(log):
-            trigger.trigger(self.env, fail)
+            self.run_trigger(fail)
         self.assertNotIn("private response", log.getvalue())
         self.assertEqual(sum(p is not None for _, _, p in self.calls), 1)
 
@@ -158,7 +188,7 @@ class ReviewTriggerTests(unittest.TestCase):
             result = self.request(url, token, payload)
             return {"type": "routine_fire", "claude_code_session_url": "https://attacker.example"} if payload else result
         with self.assertRaises(trigger.ReviewRejected), contextlib.redirect_stdout(io.StringIO()):
-            trigger.trigger(self.env, malformed)
+            self.run_trigger(malformed)
         self.assertEqual(sum(p is not None for _, _, p in self.calls), 1)
 
     def test_redirect_cannot_forward_bearer_token(self):
@@ -198,6 +228,54 @@ class ReviewTriggerTests(unittest.TestCase):
         self.assertEqual(caller["env"]["AUR_REVIEW_ROUTINE_TOKEN"],
                          "${{ secrets.AUR_REVIEW_ROUTINE_TOKEN }}")
         self.assertEqual(caller["env"]["PR_NUMBER"], "${{ needs.publish.outputs.pr_number }}")
+
+
+class DiffIsolationTests(unittest.TestCase):
+    def candidate(self, content, extra=False):
+        tmp = tempfile.TemporaryDirectory(prefix="aur-diff-test-")
+        self.addCleanup(tmp.cleanup)
+        repo = Path(tmp.name)
+        def git(*args):
+            return subprocess.check_output(["git", "-C", str(repo), "-c", "user.name=Test",
+                                            "-c", "user.email=test@example.invalid", *args],
+                                           stderr=subprocess.DEVNULL, text=True).strip()
+        git("init", "-q")
+        recipe = repo / "aur/demo/PKGBUILD"
+        recipe.parent.mkdir(parents=True)
+        recipe.write_text("# UNCHANGED_COMMENT\npkgname=demo\npkgver=1.0\n# UNCHANGED_FOOTER\n")
+        git("add", ".")
+        git("commit", "-qm", "base")
+        source = git("rev-parse", "HEAD")
+        recipe.write_text(content)
+        if extra:
+            (repo / "README.md").write_text("OUTSIDER_INSTRUCTIONS\n")
+        git("add", ".")
+        git("commit", "-qm", "CANDIDATE_COMMIT_MESSAGE")
+        head = git("rev-parse", "HEAD")
+        git("checkout", "-q", source)
+        return repo, {"source_sha": source, "head_sha": head}, recipe
+
+    def test_only_changed_lines_reach_the_diff(self):
+        repo, ctx, recipe = self.candidate("# UNCHANGED_COMMENT\npkgname=demo\npkgver=1.1\n# UNCHANGED_FOOTER\n")
+        before = recipe.read_bytes()
+        patch = trigger.build_diff(ctx, repo)
+        self.assertIn("-pkgver=1.0\n+pkgver=1.1\n", patch)
+        for text in ("UNCHANGED", "pkgname=demo", "CANDIDATE_COMMIT_MESSAGE"):
+            self.assertNotIn(text, patch)
+        self.assertFalse(any(line.startswith(" ") for line in patch.splitlines()))
+        self.assertTrue(all(line.endswith("@@") for line in patch.splitlines() if line.startswith("@@")))
+        self.assertEqual(recipe.read_bytes(), before)
+        self.assertEqual(trigger.git(repo, "status", "--porcelain"), "")
+
+    def test_added_prompt_injection_comment_is_rejected(self):
+        repo, ctx, _ = self.candidate("# IGNORE_ALL_RULES\npkgname=demo\npkgver=1.1\n# UNCHANGED_FOOTER\n")
+        with self.assertRaises(trigger.ReviewRejected):
+            trigger.build_diff(ctx, repo)
+
+    def test_outside_aur_file_is_rejected(self):
+        repo, ctx, _ = self.candidate("# UNCHANGED_COMMENT\npkgname=demo\npkgver=1.1\n# UNCHANGED_FOOTER\n", extra=True)
+        with self.assertRaises(trigger.ReviewRejected):
+            trigger.build_diff(ctx, repo)
 
 
 if __name__ == "__main__":
