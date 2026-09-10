@@ -77,8 +77,8 @@ scripts/
   validate-aur-diff.py      Deterministic gate for an AUR bump: every changed line must be a literal
                             version/checksum/manifest update, else FAIL. Never executes the recipe
   test-aur-validator.sh     Adversarial regression tests for the above (runs in CI lint)
-  trigger-aur-review.py     Metadata-gated Claude routine API caller (main-only review job)
-  test-aur-review-trigger.py Offline attack regression tests for the review handoff
+  aur-review.py             Publish candidates, isolate Claude review and merge/comment in trusted code
+  test-aur-review.py         Offline publication/isolation/merge security regressions
   check-workflow-injection.py  Fails if any workflow puts `${{ }}` inside a `run:` block (runs in CI lint)
   check-workflow-yaml.py   Parses workflow YAML with yq, from the worktree or a Git commit
   test-workflow-yaml.py    Regression tests using local Git pushes (runs in CI lint)
@@ -96,16 +96,11 @@ host-systemd/               Host user units (hourly `box pull-all` timer) — ru
 setup.sh                    One-shot setup script for new users / forks
 .github/workflows/
   build.yml                 Nightly + on-push CI build and image cleanup
-  aur-bump.yml              Nightly re-vendor of all AUR PKGBUILDs; opens a PR with an audit report.
-                            `audit` handles upstream-controlled content with NO write token;
-                            `publish` holds write tokens and re-validates what it receives;
-                            `review` uses a read token + environment-scoped routine token to call Claude.
-                            The routine's deployed prompt lives outside this repo, see "Where the
-                            vetter lives" in aur/README.md
-  CODEOWNERS                Scope guard: everything needs owner review except aur/ (needs branch protection to bite)
-  aur-vet-prompt.md         Reviewed source of the vetting routine's instructions. The routine holds merge
-                            rights, so its prompt is reviewed here and deployed to the routine — edit here
-                            first, then deploy; the two copies can drift and CI cannot check them
+  aur-bump.yml              Nightly re-vendor → publish PR/draft → prepare → isolated review → merge/comment.
+                            Rejected changes become needs-review drafts. Claude has no GitHub token/tools;
+                            finish holds merge permissions and explicitly dispatches image builds.
+  CODEOWNERS                Scope guard: everything needs owner review except aur/ (requires live review rules)
+  aur-vet-prompt.md         Policy read directly by isolated Claude Code from the trusted workflow source.
 .agents/
   rules/                    Always-active agent rules (core.mdc, self-improve.mdc)
   skills/                   Topic skills, one SKILL.md per topic
@@ -122,30 +117,32 @@ setup.sh                    One-shot setup script for new users / forks
 
 `<repo-owner>` is derived from `github.repository_owner` in CI — no hardcoding, so forks work out of the box.
 
-**AUR review handoff contract:** `aur-bump.yml` accepts only schedule/manual dispatch
-on `main`, never PR events. Its `review` job needs successful publication and uses
-the `aur-review` environment; configure that environment for the `main` branch
-only and keep `AUR_REVIEW_ROUTINE_TOKEN` there, never at repository scope.
-`AUR_REVIEW_ROUTINE_ID` is set in that environment's GitHub Variables UI.
-Branches are `aur/bump-YYYY-MM-DD-<run_id>-<publish_attempt>`; the eligibility
-status target URL binds the head SHA to that publisher attempt. Keep the branch
-format, `trigger-aur-review.py` payload/gates, and `.github/aur-vet-prompt.md` in
-sync, then deploy the prompt to Claude and remove the PR webhook. The caller
-checks live metadata, requires the GitHub Actions integration on the status
-rule, and sends seven fixed identifiers plus a validated zero-context `diff`.
-It fetches Git objects without checking out the candidate and runs the trusted
-validator using an isolated index. No PR prose, discussion, commit message or
-unchanged source reaches the payload. Claude reviews only supplied changes
-and may make one atomic expected-head-SHA merge; all reads and other writes
-are forbidden by its prompt. This does not remove available tools or auto-loaded
-repository instructions: an enforced read boundary needs platform isolation. The token is isolated
-from the audit/publisher jobs. Do not add PR-controlled inputs, PR checkouts,
-redirects or automatic POST retries. The API is not idempotent; check the run
-list before rerunning a failed review job. Live main protection, Code Owner
-review, the required eligibility integration, and a non-bypassing merge identity
-remain required; prompt text cannot enforce repository permissions. See
-`aur/README.md` for setup, recovery and the trust boundary. The caller and its
-offline tests are CI-only scripts excluded from base-image path filtering.
+**AUR review handoff contract:** `aur-bump.yml` accepts only schedule/manual
+dispatch on main, never PR events. Audit has no write token; publish applies
+candidate patches only to an isolated index and commits Git objects without
+checking out or executing candidate files. Usable changes become PRs even when
+mechanical/provenance checks fail: those are needs-review drafts with a failing
+eligibility status and never reach the model. Out-of-scope or unusable artifacts
+still stop publication. Prepare and finish independently verify publisher
+metadata, exact SHA, labels and the required GitHub Actions status integration.
+
+The main-only `aur-review` environment stores `CLAUDE_CODE_OAUTH_TOKEN`; only
+the review job receives it. Claude runs in an empty directory with a fresh config,
+safe mode, all built-in and MCP tools disabled, and an explicit environment
+without GitHub credentials. Its only input is the saved policy and zero-context
+diff; its only output is verdict/reason JSON. Keep `scripts/aur-review.py`, its
+tests, the workflow and `.github/aur-vet-prompt.md` synchronized. The finish job
+binds the response to the complete request and policy digest, repeats eligibility,
+and uses an atomic SHA-bound merge. FAIL/error posts escaped findings and holds
+the PR; model output never supplies shell code, an API endpoint or a target.
+A merge explicitly dispatches `build.yml`, since GITHUB_TOKEN suppresses the
+push-triggered build. Do not add PR-triggered jobs, candidate checkouts, redirects,
+automatic write retries, tool permissions or agent repository instructions.
+Do not use `--bare` for the OAuth reviewer: it cannot use subscription tokens.
+CLI upgrades must preserve isolation. See `aur/README.md` for token rotation,
+cloud-routine retirement, human merging, deployment and recovery. These scripts
+are CI-only and excluded from image path filtering. Live rules and owner review
+must protect this policy; CODEOWNERS alone does not enforce review.
 
 ## Containerfile Conventions
 
@@ -220,8 +217,8 @@ The completion heredocs **interpolate** the command lists from the arrays at run
 - Every `box <cmd>` invocation documented in `README.md`, `AGENTS.md`, the skills, and `setup.sh` exists in `_BOX_COMMANDS` (catches stale command names in docs)
 - `shellcheck --severity=error` passes on `bin/box`, `scripts/*.sh`, `setup.sh`, and `.githooks/pre-push`
 - **No workflow interpolates `${{ }}` into a `run:` block** (`scripts/check-workflow-injection.py`). Actions splices those into the script *source* before bash parses it, so an expression carrying untrusted text is a shell injection — bind it in `env:` and use `"$VAR"` instead. This is a real bug that shipped here, not a hypothetical
-- **The AUR diff validator accepts routine bumps and rejects the known attack shapes** (`scripts/test-aur-validator.sh`) — includes Cursor's literal indexed checksums (`sha512sums[0]=<hash>`); indexes must be decimal integers, never variables or arithmetic expressions. Rejection cases cover command substitution and appended commands on `pkgver=`/checksum lines, checksums downgraded to `SKIP`, added scriptlets, symlinked or executable PKGBUILDs, hostile filenames
-- **The AUR review API caller rejects untrusted events and metadata** (`scripts/test-aur-review-trigger.py`): fork/spoofed PRs, head changes, stale or forged eligibility statuses, PR text in payloads, redirects and automatic retries after a timeout.
+- **The AUR diff validator accepts routine bumps and rejects the known attack shapes** (`scripts/test-aur-validator.sh`) — includes Cursor's literal indexed checksums (`sha512sums[0]=<hash>`); indexes must be decimal integers, never variables or arithmetic expressions. Rejection cases cover command substitution and appended commands on `pkgver=`/checksum lines, checksums downgraded to `SKIP`, added scriptlets, symlinked, executable or binary PKGBUILDs, hostile filenames
+- **The AUR pipeline contains untrusted content and model decisions** (`scripts/test-aur-review.py`): draft publication without checkout/execution, isolated tool-less review, forged/stale/moved targets, invalid verdicts, error comments, SHA-bound merges and explicit image builds.
 
 The `build-base` and `build-boxes` jobs `needs: lint`, so a failed lint cannot coexist with newly published images.
 
@@ -275,8 +272,8 @@ python3 scripts/check-workflow-injection.py
 # The AUR diff validator must still reject every known attack shape.
 bash scripts/test-aur-validator.sh
 
-# The routine handoff must reject untrusted PRs before any API POST.
-python3 scripts/test-aur-review-trigger.py
+# Draft publication, model isolation and merge authority must remain enforced.
+python3 scripts/test-aur-review.py
 ```
 
 ## Shell Script Style

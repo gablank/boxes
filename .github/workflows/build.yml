@@ -159,8 +159,8 @@ jobs:
       - name: AUR diff validator rejects the known attack shapes
         run: bash scripts/test-aur-validator.sh
 
-      - name: AUR review trigger rejects untrusted requests
-        run: python3 scripts/test-aur-review-trigger.py
+      - name: AUR pipeline isolates candidate data and model decisions
+        run: python3 scripts/test-aur-review.py
 
   changes:
     runs-on: ubuntu-latest
@@ -200,8 +200,8 @@ jobs:
               - '!scripts/vendor-aur.sh'
               - '!scripts/validate-aur-diff.py'
               - '!scripts/test-aur-validator.sh'
-              - '!scripts/trigger-aur-review.py'
-              - '!scripts/test-aur-review-trigger.py'
+              - '!scripts/aur-review.py'
+              - '!scripts/test-aur-review.py'
               - '!scripts/check-workflow-injection.py'
               - '!scripts/check-workflow-yaml.py'
               - '!scripts/test-workflow-yaml.py'

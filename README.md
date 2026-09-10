@@ -239,17 +239,16 @@ box vendor-aur <pkgbase>   # clones from the AUR, prints a diff to vet
 # review the diff, then: git add aur/ && git commit
 ```
 
-Nightly bumps pass mechanical audit gates, open a PR, then explicitly request
-a Claude review through its routine API. Setup requires the main-only
-`aur-review` GitHub environment and deployment of the reviewed routine prompt;
-see [AUR review setup and recovery](aur/README.md#where-the-vetter-lives).
-PR events cannot start the API caller. Same-day reruns use unique branch names
-and never overwrite a commit already under review. The caller sends only a
-validated diff with zero unchanged context and fixed PR identifiers, and refuses
-to start Claude unless main requires the eligibility status from GitHub Actions.
-The prompt limits Claude to that input and one SHA-bound merge; enforcing the
-read limit also requires removing repository access and read tools in the
-routine environment.
+Nightly bumps create a PR whenever there is a usable candidate. Mechanical
+failures become `needs-review` drafts with findings; eligible literal changes
+are reviewed by isolated Claude Code using subscription OAuth. Claude has no
+tools or GitHub credentials and receives only changed lines. A separate job
+rechecks eligibility and merges the exact SHA on PASS, or comments and leaves
+the PR open on FAIL/error. It explicitly starts the image build after merging.
+Setup uses the main-only `aur-review` environment and its
+`CLAUDE_CODE_OAUTH_TOKEN` secret; see
+[AUR review setup and recovery](aur/README.md#where-the-vetter-lives).
+Only schedule/manual dispatch on main can start the workflow; PR events cannot.
 
 ### Add a package to one box
 
@@ -337,8 +336,8 @@ local-bin/              Scripts installed into ALL boxes
 scripts/
   check-workflow-yaml.py Parses workflow YAML locally, for pushed commits, and in CI
   test-workflow-yaml.py  Local Git push regression tests for YAML validation
-  trigger-aur-review.py  Validate publisher metadata and call the Claude routine API
-  test-aur-review-trigger.py Offline security tests for the review handoff
+  aur-review.py          Publish drafts, isolate subscription review and apply SHA-bound decisions
+  test-aur-review.py      Offline publication, isolation and merge-security regressions
   init-root.sh          First-start root init (chsh, /etc/environment)
   init-user.sh          First-start user init (~/.ssh, .zshrc, rustup, ~/.codex/AGENTS.md)
   shell-init.sh         Sourced from .zshrc on every shell open (interactive)

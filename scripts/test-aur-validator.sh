@@ -188,6 +188,8 @@ m_pkgbuild_replaced_by_symlink() {
   ln -s /etc/passwd "$1/aur/demo-bin/PKGBUILD"
 }
 
+m_pkgbuild_binary() { printf '\0binary\n' > "$1/aur/demo-bin/PKGBUILD"; }
+
 m_package_deleted() { rm "$1/aur/demo-bin/PKGBUILD"; }
 
 echo "validate-aur-diff.py"
@@ -220,6 +222,7 @@ expect FAIL "filename containing command substitution"    m_filename_command_sub
 expect FAIL "added .install scriptlet"                    m_added_install_scriptlet
 expect FAIL "PKGBUILD made executable"                    m_pkgbuild_made_executable
 expect FAIL "PKGBUILD replaced by a symlink"              m_pkgbuild_replaced_by_symlink
+expect FAIL "PKGBUILD replaced by binary content"          m_pkgbuild_binary
 expect FAIL "vendored package deleted"                    m_package_deleted
 echo
 printf '%d passed, %d failed\n' "$pass" "$fail"
