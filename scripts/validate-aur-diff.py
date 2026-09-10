@@ -159,6 +159,9 @@ def check_content(repo: str, staged: bool) -> list[str]:
     problems: list[str] = []
     current = ""
     for line in patch.splitlines():
+        if line.startswith(("Binary files ", "GIT binary patch")):
+            problems.append(f"binary change is not a routine literal update: {sanitize(line)}")
+            continue
         if line.startswith("+++ b/"):
             current = line[6:]
             continue
