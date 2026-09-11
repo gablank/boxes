@@ -57,7 +57,7 @@ This re-clones from the AUR, prints a diff against the committed copy so you can
 **review it before committing**, updates the files and `manifest.tsv`. Read the
 diff, then `git add aur/ && git commit`. The wrapper is `scripts/vendor-aur.sh`.
 
-The same re-vendoring also runs nightly at 03:19 UTC in
+The same re-vendoring also runs nightly at 03:28 UTC in
 `.github/workflows/aur-bump.yml`, which runs the mechanical half of the audit
 below and opens a PR carrying the report, including a draft for rejected changes. The manual command
 stays for one-off bumps and for bumping a single stale package mid-day.
@@ -133,8 +133,8 @@ A false PASS about an eligible malicious release remains possible; human review
 is the stronger control for semantic judgments that mechanical checks cannot
 establish.
 
-**Schedule and authorization.** The cron is `19 3 * * *`: 03:19 UTC, or 04:19 in
-Norwegian winter time and 05:19 in summer. Minute 19 avoids the busy start of
+**Schedule and authorization.** The cron is `28 3 * * *`: 03:28 UTC, or 04:28 in
+Norwegian winter time and 05:28 in summer. Minute 28 avoids the busy start of
 the hour, but GitHub may still delay or drop scheduled runs.
 Only schedule and authorized manual dispatch on `main` are accepted. Opening,
 editing or commenting on an outsider PR cannot start this workflow; running a
