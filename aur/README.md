@@ -283,6 +283,7 @@ confirm with `grep -rn <old-version> --exclude-dir=.git .` before committing.
 ## Adding / removing a vendored package
 
 - **Add:** `box vendor-aur <new-pkgbase>`, review, then add its build step to the
-  AUR section of `Containerfile.base`.
+  `aur-builder` stage of `Containerfile.base`, ending in `mv ./*.pkg.tar* /out/` so
+  the final stage installs it.
 - **Remove:** delete `aur/<pkgbase>/`, drop its row from `manifest.tsv`, and
   remove its build step from `Containerfile.base`.
