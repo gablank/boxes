@@ -91,7 +91,7 @@ scripts/
   vendor-aur.sh             Re-vendor AUR PKGBUILDs into aur/ with a diff to vet (box vendor-aur)
 bin/
   box                       Host-side CLI for managing boxes
-host-systemd/               Host user units (hourly `box pull-all` timer) — run on the HOST, not in a box
+host-systemd/               Host user units (hourly `box pull-all` timer, weekly podman image prune) — run on the HOST, not in a box
 .githooks/pre-push           Validates workflow YAML in each pushed commit; enable per clone
 setup.sh                    One-shot setup script for new users / forks
 .github/workflows/
@@ -187,7 +187,7 @@ Add it to the extension install loop in `Containerfile.base`.
 - `box assemble <box>` recompiles `box.toml` → `distrobox.ini` and runs `distrobox assemble create`; does not touch the image tag
 - `box assemble-all` assembles all boxes
 - `box pull <box> [tag]` pulls the image via `podman pull` without touching the container or ini; uses the tag currently in the ini if none specified
-- `box pull-all [tag]` pulls every discovered box's image. It does **not** abort on the first failure — a transient registry error on one box must not skip the rest — but collects the failures and exits non-zero. `host-systemd/` ships an hourly user timer that runs it on the host so `box upgrade` never waits on a download; see README.md for installation and the disk-growth caveat
+- `box pull-all [tag]` pulls every discovered box's image. It does **not** abort on the first failure — a transient registry error on one box must not skip the rest — but collects the failures and exits non-zero. `host-systemd/` ships an hourly user timer that runs it on the host so `box upgrade` never waits on a download, plus a weekly `podman-prune.timer` that removes the untagged images those pulls leave behind from both the rootless and the rootful store; see README.md for installation
 - `box upgrade <box>` sets the tag to `latest`, pulls, and reassembles — the one-command upgrade path
 - `box build [--no-cache] <box>` builds base + box images locally; layer cache is used unless `--no-cache` is given
 - `box doctor [box]` checks running boxes for **silent drift** — states where the box keeps working so nothing surfaces until much later, far from the cause. Exits non-zero if any check fails. Two checks today: (1) packaged files edited in the container's writable layer, which the next recreate reverts; (2) for init boxes, that the SSH host keys actually persist and that sshd is key-only. Check (1) requires *both* a `pacman -Qkk` SHA256 mismatch **and** a `podman diff` `C` entry — testing only the first reports every file `Containerfile.base` modified at build time (the tailscale wrapper, the `.desktop` fixes), which are rebuilt every recreate and are pure noise. `_DOCTOR_EXPECTED_MODIFIED` allowlists the files distrobox/podman legitimately rewrite at every start; keep it tight and give each entry a reason, since every entry is a check being skipped. **When you fix a bug whose symptom showed up somewhere other than its cause, consider adding a check here**

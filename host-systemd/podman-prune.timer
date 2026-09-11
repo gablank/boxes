@@ -1,0 +1,16 @@
+# Weekly is plenty: the pulls that create the garbage are hourly, but each box
+# only produces one new image a day, and `until=336h` means anything younger
+# than two weeks survives a run regardless.
+
+[Unit]
+Description=Weekly prune of unused podman images
+
+[Timer]
+OnCalendar=weekly
+# Spread away from the top of the hour, where box-pull.timer fires.
+RandomizedDelaySec=30m
+# Catch up after a boot or a resume that missed a trigger.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

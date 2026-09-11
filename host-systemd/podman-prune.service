@@ -1,0 +1,31 @@
+# Reclaim the disk that hourly `latest` pulls leave behind. Every nightly image
+# that lands untags the previous one, so without pruning disk use grows by
+# roughly one image per box per day (see README "Keeping images pre-fetched").
+#
+# Installed on the HOST, not in a box. There are two separate stores to prune:
+# the user's rootless store (`dev`) and root's store (`priv`, `work`), hence the
+# two ExecStart lines. The second relies on `podman` being NOPASSWD in sudoers,
+# exactly like box-pull.service.
+#
+# `--filter until=336h` keeps anything built in the last two weeks, so the image
+# box-pull just fetched is never removed before `box upgrade` uses it. `until`
+# compares the image's *build* date, not when it was pulled. `-a` also removes
+# tagged images no container uses (old `local-*` builds, dated registry tags),
+# so `box images` lists fewer local rollback targets; registry tags stay
+# pullable. Images backing an existing container, running or stopped, are never
+# removed, so this cannot strand a box.
+#
+# Never widen this to `podman system prune` or `podman container prune`: a
+# stopped box is a stopped container and would be deleted.
+
+[Unit]
+Description=Prune podman images older than two weeks (rootless and rootful stores)
+Documentation=https://github.com/gablank/boxes
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/podman image prune -af --filter until=336h
+ExecStart=/usr/bin/sudo /usr/bin/podman image prune -af --filter until=336h
+# Deleting a hundred gigabytes of layers is IO-heavy; keep it off the user's back.
+Nice=10
+IOSchedulingClass=idle
