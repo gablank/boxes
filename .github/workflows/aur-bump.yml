@@ -2,11 +2,12 @@ name: AUR bump
 
 # Re-vendors every AUR PKGBUILD and opens a PR with the result.
 #
-# 03:00 UTC starts a chain that must finish before 07:00 Norwegian time: vet,
-# merge, image rebuild, then the host's hourly `box pull-all`. In CEST that
+# 03:19 UTC avoids the busy start of the hour. The aim is to finish before
+# 07:00 Norwegian time: vet, merge, image rebuild, then the host's hourly
+# `box pull-all`. GitHub may delay scheduled starts. In CEST that
 # deadline is 05:00 UTC, so the rebuild has to be done by ~04:00 for the hourly
-# pull to catch it. Note this shares its slot with build.yml's nightly cron;
-# they serialize on the `build-images` concurrency group, so a nightly build
+# pull to catch it. Image builds serialize on the `build-images` concurrency
+# group, so build.yml's 03:00 UTC nightly build
 # still running when this PR merges delays the merge's build behind it.
 #
 # STRUCTURE. Everything this workflow processes --
@@ -46,7 +47,7 @@ name: AUR bump
 
 on:
   schedule:
-    - cron: "0 3 * * *"
+    - cron: "19 3 * * *"
   workflow_dispatch:
 
 # No ambient permissions; each job asks for exactly what it needs.
