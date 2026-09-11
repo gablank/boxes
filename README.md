@@ -231,8 +231,9 @@ RUN pacman -S --noconfirm --needed <package>
 
 For an **AUR** package, the build never fetches from the AUR — it builds only from
 vetted PKGBUILDs vendored under `aur/` (a supply-chain control; see `aur/README.md`).
-Vendor and review the new package, then add a `makepkg` step to the AUR section of
-`Containerfile.base`:
+Vendor and review the new package, then add a `makepkg` step to the `aur-builder`
+stage of `Containerfile.base`, ending in `mv ./*.pkg.tar* /out/` so the final stage
+installs it:
 
 ```bash
 box vendor-aur <pkgbase>   # clones from the AUR, prints a diff to vet
@@ -313,6 +314,12 @@ Images are built by GitHub Actions on every push to `main` and nightly at 03:00 
 - `ghcr.io/<owner>/box-priv` — privbox image
 - `ghcr.io/<owner>/box-work` — workbox image
 - `ghcr.io/<owner>/box-dev` — devbox image
+
+`Containerfile.base` is a multi-stage build: the vendored AUR packages are compiled
+in a throwaway `aur-builder` stage and only the resulting packages are installed into
+the image, so build tooling, sources and pacman's download cache never ship. Keep it
+that way when adding steps — a file deleted in a later `RUN` still occupies the
+earlier layer.
 
 Each image is tagged `latest` and `YYYY-MM-DDTHHMM` (UTC, e.g. `2026-03-04T0300`). Images older than 14 days are automatically deleted (keeping `latest`).
 

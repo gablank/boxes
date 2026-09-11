@@ -1,5 +1,17 @@
-FROM archlinux:latest
+# Three stages. `sysbase` installs everything from the official repos;
+# `aur-builder` compiles the vendored AUR packages on top of it and is thrown
+# away; the final stage starts from `sysbase` again, installs the built
+# packages and adds the rest. Image layers are additive — a file deleted in a
+# later RUN still ships inside the earlier one — so anything that produces
+# garbage (makepkg trees, make-dependencies, pacman's download cache, a
+# chmod -R over an existing tree) is either confined to the builder or cleaned
+# in the same RUN that made it. See "Containerfile Conventions" in AGENTS.md.
+FROM archlinux:latest AS sysbase
 
+# BUILD_DATE changes every nightly build and every RUN in this stage keys its
+# cache on it, so the whole chain is rebuilt from scratch each night and
+# `pacman -Syu` really updates. The two stages below start FROM this one and
+# inherit the bust through their parent layer.
 ARG BUILD_DATE=unknown
 ARG BUILD_SHA=unknown
 
@@ -9,14 +21,18 @@ ARG BUILD_SHA=unknown
 RUN sed -i '/^NoExtract.*usr\/share\/\(man\|info\)/d' /etc/pacman.conf && \
     pacman-key --init && \
     pacman-key --populate archlinux && \
-    pacman -Syu --noconfirm
+    pacman -Syu --noconfirm && \
+    pacman -Scc --noconfirm && \
+    rm -rf /var/cache/pacman/pkg/*
 
 # The packages baked into archlinux:latest were extracted while the bootstrap
 # NoExtract filters were active, so their man/info pages are gone. Re-extract
 # every preinstalled package NOW, before any customization below — a blanket
 # reinstall later in the file would clobber file modifications made in earlier
 # layers (it once silently overwrote the tailscale wrapper).
-RUN pacman -Qqn | pacman -S --noconfirm --overwrite '*' -
+RUN pacman -Qqn | pacman -S --noconfirm --overwrite '*' - && \
+    pacman -Scc --noconfirm && \
+    rm -rf /var/cache/pacman/pkg/*
 
 # Pacman packages, grouped by purpose (one group per line below):
 #   Build toolchain + core utils: base-devel glib2 git openssh sudo ...
@@ -60,7 +76,9 @@ RUN pacman -S --noconfirm --needed \
     tailscale \
     yubikey-manager libfido2 opensc yubico-piv-tool pcsc-tools \
     age age-plugin-yubikey \
-    breeze-gtk xdg-desktop-portal-kde
+    breeze-gtk xdg-desktop-portal-kde && \
+    pacman -Scc --noconfirm && \
+    rm -rf /var/cache/pacman/pkg/*
 
 # Switch iptables/ip6tables to nftables backend (host kernel lacks ip_tables module)
 RUN ln -sf /usr/bin/xtables-nft-multi /usr/bin/iptables && \
@@ -76,9 +94,24 @@ RUN ln -sf /usr/bin/xtables-nft-multi /usr/bin/iptables && \
     ln -sf /usr/bin/xtables-nft-multi /usr/sbin/ip6tables-restore && \
     ln -sf /usr/bin/xtables-nft-multi /usr/sbin/ip6tables-save
 
-# makepkg cannot run as root
+# ---------------------------------------------------------------------------
+# aur-builder: compile the vendored AUR packages. Only the .pkg.tar.zst files
+# collected in /out reach the final image; sources, staging trees,
+# make-dependencies (the Go toolchain yay needs, ...) and builduser itself are
+# discarded with this stage. Before the split all of that shipped: the AUR
+# layers weighed 10 GB for about 2.5 GB of installed software.
+# ---------------------------------------------------------------------------
+FROM sysbase AS aur-builder
+
+# makepkg cannot run as root. /out collects the built packages for the final
+# stage. Arch's makepkg.conf enables the `debug` option, which splits debug
+# symbols into <pkg>-debug packages that `makepkg -i` would install as well
+# (mongodb-tools alone: ~100 MB); nobody debugs these binaries in a box.
 RUN useradd -m -G wheel builduser && \
-    printf 'builduser ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/builduser
+    printf 'builduser ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/builduser && \
+    install -d -o builduser -g builduser /out && \
+    sed -i '/^OPTIONS=/s/ debug\b/ !debug/' /etc/makepkg.conf && \
+    grep -q '^OPTIONS=.*!debug' /etc/makepkg.conf
 
 # AUR packages are built from vetted PKGBUILDs vendored in aur/ — the build never
 # fetches PKGBUILDs from the AUR (supply-chain control; see aur/README.md).
@@ -89,11 +122,13 @@ COPY --chown=builduser:builduser aur/ /tmp/aur/
 
 USER builduser
 
-# yay first: it is built here so it still ships in the images for interactive
-# `yay -S` after pulling. Only the image build is locked to vendored copies.
-RUN cd /tmp/aur/yay && makepkg -si --noconfirm --needed
+# yay: built here so it ships in the images for interactive `yay -S` after
+# pulling. Only the image build is locked to vendored copies. `-i` also installs
+# each package into the builder, which is harmless and keeps the order below
+# insensitive to any pkgbase that depends on an earlier one.
+RUN cd /tmp/aur/yay && makepkg -si --noconfirm --needed && mv ./*.pkg.tar* /out/
 
-# Single-package pkgbases — build and install every package each produces:
+# Single-package pkgbases — build each and collect every package it produces:
 #   IDEs / editors: visual-studio-code-bin, cursor-bin
 #   Zsh framework: oh-my-zsh-git
 #   Browser (exported via distrobox): google-chrome (desktop file patched later by chrome-wrapper)
@@ -103,29 +138,48 @@ RUN cd /tmp/aur/yay && makepkg -si --noconfirm --needed
 #     priv and work, but the AUR build scaffolding only exists here, so dev
 #     gets it too
 RUN for b in visual-studio-code-bin cursor-bin oh-my-zsh-git google-chrome mongodb-tools claude-code herdr-bin; do \
-      ( cd "/tmp/aur/$b" && makepkg -si --noconfirm --needed ) || exit 1; \
+      ( cd "/tmp/aur/$b" && makepkg -si --noconfirm --needed && mv ./*.pkg.tar* /out/ ) || exit 1; \
     done
 
-# google-cloud-cli is a split pkgbase: build once, install only gcloud core + the
+# google-cloud-cli is a split pkgbase: build once, collect only gcloud core + the
 # GKE auth plugin for kubectl (not bq/gsutil/bundled-python).
 RUN cd /tmp/aur/google-cloud-cli && \
     makepkg -s --noconfirm --needed && \
-    sudo pacman -U --noconfirm \
-      google-cloud-cli-[0-9]*.pkg.tar* \
-      google-cloud-cli-component-gke-gcloud-auth-plugin-*.pkg.tar*
+    mv google-cloud-cli-[0-9]*.pkg.tar* \
+       google-cloud-cli-component-gke-gcloud-auth-plugin-*.pkg.tar* /out/
 
-USER root
-WORKDIR /
-RUN rm -rf /tmp/aur
+# ---------------------------------------------------------------------------
+# Final image: sysbase + the built AUR packages + everything below.
+# ---------------------------------------------------------------------------
+FROM sysbase
+
+# ARGs do not cross stage boundaries; re-declared for /etc/box-build-info.
+ARG BUILD_DATE=unknown
+ARG BUILD_SHA=unknown
+
+# `pacman -U` installs the built packages and pulls their runtime dependencies
+# from the official repos — the same set `makepkg -si` used to install here.
+# The builder's /out is bind-mounted for this RUN only, not COPY'd: a COPY is a
+# layer of its own, so the ~1 GB of package archives would ship with the image
+# and a later rm would merely hide them.
+RUN --mount=type=bind,from=aur-builder,source=/out,target=/tmp/pkgs \
+    pacman -U --noconfirm /tmp/pkgs/*.pkg.tar* && \
+    pacman -Scc --noconfirm && \
+    rm -rf /var/cache/pacman/pkg/*
 
 # vi -> vim symlink (vi-vim-symlink AUR package no longer exists)
 RUN ln -sf /usr/bin/vim /usr/bin/vi
 
-# Claude Code seccomp sandbox: provides BPF filters to block unix domain sockets
-RUN npm install -g @anthropic-ai/sandbox-runtime
+# Claude Code seccomp sandbox: provides BPF filters to block unix domain sockets.
+# npm's download cache is dropped in the same RUN so it never ships.
+RUN npm install -g @anthropic-ai/sandbox-runtime && \
+    rm -rf /root/.npm
 
 # Pre-install Cursor extensions to a system-wide directory.
 # Uses /usr/bin/cursor directly (before wrapper is created).
+# The chmod lets runtime users write temp files inside extension directories
+# (e.g. debugpy). It must stay in this RUN: chmod -R over a tree from an earlier
+# layer copies every file up into a new layer and shipped the ~600 MB twice.
 RUN mkdir -p /opt/cursor-extensions && \
     for ext in \
         anysphere.cursorpyright \
@@ -147,10 +201,8 @@ RUN mkdir -p /opt/cursor-extensions && \
     do \
         /usr/bin/cursor --no-sandbox --extensions-dir /opt/cursor-extensions \
             --install-extension "$ext" || true; \
-    done
-
-# Allow runtime users to write temp files inside extension directories (e.g. debugpy)
-RUN chmod -R a+w /opt/cursor-extensions
+    done && \
+    chmod -R a+w /opt/cursor-extensions
 
 # Wrapper so both CLI and .desktop launch use the pre-installed extensions
 RUN printf '#!/bin/sh\nexec /usr/bin/cursor --extensions-dir /opt/cursor-extensions "$@"\n' \
@@ -382,7 +434,5 @@ RUN printf 'build_date=%s\nbuild_sha=%s\nimage=box-base\n' \
 
 RUN mandb --quiet && \
     rm -rf /tmp/* && \
-    rm -f /etc/sudoers.d/builduser && \
-    userdel -r builduser 2>/dev/null || true && \
     pacman -Scc --noconfirm && \
     rm -rf /var/cache/pacman/pkg/*
