@@ -100,21 +100,25 @@ box completions <bash|zsh|install>  Print or install shell completions
 
 ## Keeping images pre-fetched (host timer)
 
-`host-systemd/` ships a user timer that runs `box pull-all` every hour, so a new
-nightly image is already on disk before you ask for it and `box upgrade` does not
-stall on a multi-GB download. It only *downloads* — no container is recreated and
-nothing running is disrupted, so upgrading stays a deliberate manual step.
+`host-systemd/` ships two user timers. `box-pull.timer` runs `box pull-all` every
+hour, so a new nightly image is already on disk before you ask for it and
+`box upgrade` does not stall on a multi-GB download. It only *downloads* — no
+container is recreated and nothing running is disrupted, so upgrading stays a
+deliberate manual step. `podman-prune.timer` runs weekly and removes the images
+those pulls leave behind (see below).
 
 Install it on the **host**, not inside a box: `bin/box` drives the host's podman,
 which is not reachable from within a container.
 
 ```bash
-install -Dm644 host-systemd/box-pull.service ~/.config/systemd/user/box-pull.service
-install -Dm644 host-systemd/box-pull.timer   ~/.config/systemd/user/box-pull.timer
+install -Dm644 host-systemd/box-pull.service     ~/.config/systemd/user/box-pull.service
+install -Dm644 host-systemd/box-pull.timer       ~/.config/systemd/user/box-pull.timer
+install -Dm644 host-systemd/podman-prune.service ~/.config/systemd/user/podman-prune.service
+install -Dm644 host-systemd/podman-prune.timer   ~/.config/systemd/user/podman-prune.timer
 systemctl --user daemon-reload
-systemctl --user enable --now box-pull.timer
+systemctl --user enable --now box-pull.timer podman-prune.timer
 
-systemctl --user list-timers box-pull.timer   # confirm it is scheduled
+systemctl --user list-timers box-pull.timer podman-prune.timer   # confirm both are scheduled
 systemctl --user start box-pull.service       # run it once now
 journalctl --user -u box-pull.service -n 50   # see what it did
 ```
@@ -127,13 +131,17 @@ Three things to know:
   `loginctl enable-linger $USER` if you want it to keep pulling on a machine you
   are logged out of.
 - **Hourly `latest` pulls leave the previous images untagged**, so disk use grows
-  by roughly one image per box per day. Reclaim it with `podman image prune -f`
-  (plus `sudo podman image prune -f` for the rootful `priv`/`work` store, which
-  is a separate one). Images still referenced by an existing container are never
-  removed, so this cannot strand a box.
+  by roughly one image per box per day. `podman-prune.timer` reclaims it weekly,
+  removing images older than two weeks from both stores — the rootless one
+  (`dev`) and root's (`priv`/`work`), which is a separate one. Images still
+  referenced by an existing container are never removed, so this cannot strand a
+  box. Tagged images no container uses (old `local-*` builds, dated tags) do go,
+  so `box images` lists fewer local rollback targets. Never swap in
+  `podman system prune` or `podman container prune`: a stopped box is a stopped
+  container and would be deleted with it.
 
-Pulling `priv` and `work` runs `sudo podman`, which the timer can only do
-unattended if `podman` is NOPASSWD in sudoers on the host.
+Pulling and pruning the rootful `priv`/`work` store runs `sudo podman`, which the
+timers can only do unattended if `podman` is NOPASSWD in sudoers on the host.
 
 
 ## Forking / Using Your Own Images
@@ -346,7 +354,7 @@ scripts/
   compile-box-toml.py   Compiles box.toml → distrobox.ini
 bin/
   box                   Host-side CLI
-host-systemd/           Host user units (hourly image pre-fetch), installed on the host
+host-systemd/           Host user units (hourly image pre-fetch, weekly image prune), installed on the host
 .githooks/pre-push      Validates workflow YAML in each pushed commit
 setup.sh                One-shot setup script for new users
 .github/workflows/
