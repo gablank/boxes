@@ -57,7 +57,7 @@ This re-clones from the AUR, prints a diff against the committed copy so you can
 **review it before committing**, updates the files and `manifest.tsv`. Read the
 diff, then `git add aur/ && git commit`. The wrapper is `scripts/vendor-aur.sh`.
 
-The same re-vendoring also runs nightly at 03:00 UTC in
+The same re-vendoring also runs nightly at 03:19 UTC in
 `.github/workflows/aur-bump.yml`, which runs the mechanical half of the audit
 below and opens a PR carrying the report, including a draft for rejected changes. The manual command
 stays for one-off bumps and for bumping a single stale package mid-day.
@@ -133,8 +133,9 @@ A false PASS about an eligible malicious release remains possible; human review
 is the stronger control for semantic judgments that mechanical checks cannot
 establish.
 
-**Schedule and authorization.** The existing cron is `03:00 UTC`, or 04:00 in
-Norwegian winter time and 05:00 in summer; GitHub may delay scheduled starts.
+**Schedule and authorization.** The cron is `19 3 * * *`: 03:19 UTC, or 04:19 in
+Norwegian winter time and 05:19 in summer. Minute 19 avoids the busy start of
+the hour, but GitHub may still delay or drop scheduled runs.
 Only schedule and authorized manual dispatch on `main` are accepted. Opening,
 editing or commenting on an outsider PR cannot start this workflow; running a
 fork's copy does not grant access to this repository's credentials. Branches
@@ -163,8 +164,10 @@ its API trigger token. Remove the retired `AUR_REVIEW_ROUTINE_TOKEN` secret and
 `AUR_REVIEW_ROUTINE_ID` variable; keep them until migration to avoid breaking
 old runs prematurely. Start a **new** workflow run after migration: rerunning
 an old run executes its old workflow and code. The first live run created PR #6
-but its isolated review returned ERROR and correctly left it unmerged. Successful
-subscription inference remains unverified. The old trigger secret and variable
+but its isolated review returned ERROR and correctly left it unmerged. After
+correcting a line break in the OAuth secret, run `34513533988` reviewed and
+merged PR #9 and dispatched the image build, verifying the complete pipeline.
+The old trigger secret and variable
 have been removed; ensure the old cloud routine is also disabled, since its
 authority is separate from these workflow controls.
 
