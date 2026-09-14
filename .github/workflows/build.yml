@@ -2,7 +2,13 @@ name: Build box images
 
 on:
   schedule:
-    - cron: "0 3 * * *"
+    # 21:00 UTC the evening before, not 03:00: GitHub has been creating
+    # scheduled runs 4-5 hours after the cron fires, and the nightly image has
+    # to be pushed by ~04:00 UTC for the host's hourly `box pull-all` to have it
+    # before the working day. Firing early costs nothing. The full budget is in
+    # the header of aur-bump.yml; keep this 28 minutes ahead of that cron, which
+    # is what orders the two on the `build-images` concurrency group.
+    - cron: "0 21 * * *"
   push:
     branches: [main]
   workflow_dispatch:

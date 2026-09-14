@@ -316,7 +316,7 @@ hook matters because malformed workflow YAML can prevent CI itself from starting
 
 ## Image Build
 
-Images are built by GitHub Actions on every push to `main` and nightly at 03:00 UTC. Builds are skipped when the relevant files haven't changed — base only rebuilds if `Containerfile.base`, `scripts/`, or `local-bin/` changed; each box only rebuilds if base or its own directory changed. Scheduled and manual runs always rebuild everything.
+Images are built by GitHub Actions on every push to `main` and nightly at 21:00 UTC — the evening before, deliberately, because GitHub creates scheduled runs hours after the cron fires (see the header of `.github/workflows/aur-bump.yml`). Builds are skipped when the relevant files haven't changed — base only rebuilds if `Containerfile.base`, `scripts/`, or `local-bin/` changed; each box only rebuilds if base or its own directory changed. Scheduled and manual runs always rebuild everything.
 
 - `ghcr.io/<owner>/box-base` — base image with all shared packages
 - `ghcr.io/<owner>/box-priv` — privbox image
@@ -329,7 +329,7 @@ the image, so build tooling, sources and pacman's download cache never ship. Kee
 that way when adding steps — a file deleted in a later `RUN` still occupies the
 earlier layer.
 
-Each image is tagged `latest` and `YYYY-MM-DDTHHMM` (UTC, e.g. `2026-03-04T0300`). Images older than 14 days are automatically deleted (keeping `latest`).
+Each image is tagged `latest` and `YYYY-MM-DDTHHMM` (UTC, e.g. `2026-03-04T2100`). Images older than 14 days are automatically deleted (keeping `latest`).
 
 ## Repository Structure
 
