@@ -351,6 +351,8 @@ local-bin/              Scripts installed into ALL boxes
 scripts/
   check-workflow-yaml.py Parses workflow YAML locally, for pushed commits, and in CI
   test-workflow-yaml.py  Local Git push regression tests for YAML validation
+  validate-aur-diff.py   Sort an AUR bump into a review tier: A merges on a literal-grammar
+                         check, B is read line by line by an isolated review, C stops for a human
   aur-review.py          Publish drafts, isolate subscription review and apply SHA-bound decisions
   test-aur-review.py      Offline publication, isolation and merge-security regressions
   init-root.sh          First-start root init (chsh, /etc/environment)
@@ -366,5 +368,5 @@ host-systemd/           Host user units (hourly image pre-fetch, weekly image pr
 setup.sh                One-shot setup script for new users
 .github/workflows/
   build.yml             CI build and cleanup
-  aur-bump.yml          Nightly AUR audit, PR/draft publication, isolated Claude review and merge/comment
+  aur-bump.yml          Nightly AUR audit, PR/draft publication, tiered isolated Claude review and merge/comment
 ```

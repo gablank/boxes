@@ -28,11 +28,16 @@ name: AUR bump
 #            (`contents: read`, `persist-credentials: false`). It cannot push,
 #            open a PR, or post a status even if it is compromised.
 #   publish  applies the patch to an isolated Git index, never a checkout;
-#            routine bumps are open PRs, rejected changes are needs-review drafts.
-#   prepare  rechecks the exact PR and builds a zero-context diff.
-#   review   runs tool-less Claude Code using subscription OAuth; its process
-#            receives no GitHub credentials, repository files or PR prose.
-#   finish   rechecks eligibility and the bound verdict, then merges or comments.
+#            tier A and B candidates are open PRs, tier C ones are
+#            needs-review drafts.
+#   prepare  rechecks the exact PR, reclassifies it, and builds the payload its
+#            tier is reviewed from -- a zero-context diff for tier A, the diff
+#            plus the full text of each changed file for tier B.
+#   review   runs tool-less Claude Code using subscription OAuth against the
+#            policy for that tier; its process receives no GitHub credentials,
+#            repository files or PR prose.
+#   finish   rechecks eligibility, the tier and the bound verdict, then merges
+#            or comments.
 #
 # Two rules keep that boundary real, and both are load-bearing:
 #
@@ -46,10 +51,14 @@ name: AUR bump
 #      interpolated. Findings go to files under $RUNNER_TEMP; outputs carry only
 #      fixed words this workflow chose itself (true/false/PASS/FAIL).
 #
-# scripts/validate-aur-diff.py is the content gate, and it fails closed: every
-# changed line must match an exact literal shape. It replaces the old "strip
-# lines starting with pkgver=/sha256sums= and read the rest" filter, which
-# reported a diff containing `pkgver=1.2.3$(...)` as routine. Its adversarial
+# scripts/validate-aur-diff.py is the content gate, and it fails closed. Tier A
+# is the literal grammar: every changed line must match an exact literal shape,
+# replacing the old "strip lines starting with pkgver=/sha256sums= and read the
+# rest" filter, which reported a diff containing `pkgver=1.2.3$(...)` as routine.
+# Tier B is bounded packager-authored code -- scriptlets, patches, wrappers,
+# completions -- which is where an attack on a vendored recipe actually lives,
+# so it is read line by line under .github/aur-review-prompt.md rather than
+# merged mechanically. Tier C is everything a human must read. Its adversarial
 # regression tests run in build.yml's lint job; see scripts/test-aur-validator.sh.
 
 on:
@@ -111,20 +120,22 @@ jobs:
           echo '::error::Vendoring failed before producing a candidate; no PR can be opened.'
           exit 1
 
-      # --- Gate 1: the change is mechanically validatable as a routine bump ---
-      # Paths, file modes and every changed line. See the script's docstring for
-      # why prefix-stripping was unsafe.
-      - name: Gate - changes validate as a routine version bump
+      # --- Gate 1: which tier of review does this change need? -----------------
+      # Paths, file modes, every changed line, and whether versions move
+      # forward. See the script's docstring for the three tiers and for why
+      # prefix-stripping was unsafe. This step only reports: publish
+      # reclassifies the candidate itself from the isolated index.
+      - name: Gate - classify the change into a review tier
         id: gate_validate
         if: steps.detect.outputs.changed == 'true'
         run: |
           set -euo pipefail
-          if python3 scripts/validate-aur-diff.py --repo . \
-               > "$RUNNER_TEMP/validate.txt" 2>&1; then
-            echo "verdict=PASS" >> "$GITHUB_OUTPUT"
-          else
-            echo "verdict=FAIL" >> "$GITHUB_OUTPUT"
-          fi
+          printf 'C' > "$RUNNER_TEMP/tier"
+          python3 scripts/validate-aur-diff.py --repo . --tier-file "$RUNNER_TEMP/tier" \
+            > "$RUNNER_TEMP/validate.txt" 2>&1 || true
+          tier="$(cat "$RUNNER_TEMP/tier")"
+          case "$tier" in A|B|C) ;; *) tier=C ;; esac
+          echo "tier=$tier" >> "$GITHUB_OUTPUT"
           # `cat` never interprets its input as script.
           cat "$RUNNER_TEMP/validate.txt"
 
@@ -201,6 +212,7 @@ jobs:
       head_sha: ${{ steps.pr.outputs.head_sha }}
       branch: ${{ steps.pr.outputs.branch }}
       publish_attempt: ${{ steps.pr.outputs.publish_attempt }}
+      tier: ${{ steps.pr.outputs.tier }}
       eligible: ${{ steps.pr.outputs.eligible }}
     steps:
       - uses: actions/checkout@v4

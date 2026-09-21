@@ -74,8 +74,10 @@ dev/
   box.toml                  Container definition — source of truth
 local-bin/                  Scripts/binaries installed into ALL boxes
 scripts/
-  validate-aur-diff.py      Deterministic gate for an AUR bump: every changed line must be a literal
-                            version/checksum/manifest update, else FAIL. Never executes the recipe
+  validate-aur-diff.py      Deterministic review-tier classifier for an AUR bump: A (every changed line
+                            a literal version/checksum/manifest update, versions moving forward),
+                            B (bounded packager-authored recipe code — model review), C (human only).
+                            Never executes the recipe
   test-aur-validator.sh     Adversarial regression tests for the above (runs in CI lint)
   aur-review.py             Publish candidates, isolate Claude review and merge/comment in trusted code
   test-aur-review.py         Offline publication/isolation/merge security regressions
@@ -97,10 +99,12 @@ setup.sh                    One-shot setup script for new users / forks
 .github/workflows/
   build.yml                 Nightly + on-push CI build and image cleanup
   aur-bump.yml              Nightly re-vendor → publish PR/draft → prepare → isolated review → merge/comment.
-                            Rejected changes become needs-review drafts. Claude has no GitHub token/tools;
+                            Tier C changes become needs-review drafts. Claude has no GitHub token/tools;
                             finish holds merge permissions and explicitly dispatches image builds.
   CODEOWNERS                Scope guard: everything needs owner review except aur/ (requires live review rules)
-  aur-vet-prompt.md         Policy read directly by isolated Claude Code from the trusted workflow source.
+  aur-vet-prompt.md         Tier A policy: routine literal version/checksum bumps.
+  aur-review-prompt.md      Tier B policy: packager-authored recipe code, read line by line.
+                            Both are read directly by isolated Claude Code from the trusted workflow source.
 .agents/
   rules/                    Always-active agent rules (core.mdc, self-improve.mdc)
   skills/                   Topic skills, one SKILL.md per topic
@@ -117,21 +121,63 @@ setup.sh                    One-shot setup script for new users / forks
 
 `<repo-owner>` is derived from `github.repository_owner` in CI — no hardcoding, so forks work out of the box.
 
+**AUR review threat model — read this before changing the tiers.** The upstream
+developers whose artifacts these recipes download are trusted; the **AUR
+packagers who write the recipes are not**. Everything a hostile packager
+controls is text in the diff: PKGBUILD code, `*.install` scriptlets that run as
+root during the image build, `*.patch` files applied to upstream source, and
+local `*.sh`/completion files installed into the image (`google-cloud-cli.sh`
+lands in `/etc/profile.d`, so it is sourced by every login shell in every box).
+Reviewing that text is therefore the whole defence, and the tiers decide who
+reads it. Do not "simplify" by widening tier A or by routing tier C to the model.
+
 **AUR review handoff contract:** `aur-bump.yml` accepts only schedule/manual
 dispatch on main, never PR events. Audit has no write token; publish applies
 candidate patches only to an isolated index and commits Git objects without
-checking out or executing candidate files. Usable changes become PRs even when
-mechanical/provenance checks fail: those are needs-review drafts with a failing
-eligibility status and never reach the model. Out-of-scope or unusable artifacts
-still stop publication. Prepare and finish independently verify publisher
+checking out or executing candidate files. `scripts/validate-aur-diff.py`
+classifies every candidate into a tier, and publish recomputes it from the
+isolated index rather than trusting the audit job:
+
+- **Tier A** — every changed line is a complete literal version/checksum/manifest
+  update in an existing PKGBUILD, and every version moves forward (`vercmp`,
+  ported into the script because CI runs on Ubuntu). No `source=` line can
+  change without leaving the tier, so download hosts stay pinned to
+  human-reviewed values; `pkgver`/`_commit` are interpolated into those URLs, so
+  the forward-movement check is what stops a downgrade to a known-vulnerable
+  release. Reviewed against `.github/aur-vet-prompt.md`, then merged.
+- **Tier B** — bounded, readable packager-authored content: text modifications or
+  additions inside a package that is already vendored, within 400 changed lines
+  and 20 files. This is where an attack on a vendored recipe actually lives, so
+  it is reviewed against `.github/aur-review-prompt.md` with the diff **and the
+  complete text of every changed file** (a shell hunk cannot be judged without
+  its neighbours), then merged on a PASS.
+- **Tier C** — human only, never sent to a model: deletions, renames, mode/type
+  changes, binaries, a brand-new vendored package, control characters, anything
+  over the caps, a version that does not move forward, a `SKIP` checksum being
+  introduced, a non-literal `pkgver`/`pkgrel`/`_commit`/`sha*sums` assignment
+  (the 2026-09-08 `pkgver=1.2.3$(...)` finding), and any change to a
+  `source=`/`noextract=`/`install=`/`validpgpkeys=` assignment. The last two
+  classes stay code-blocked on purpose: there is no legitimate form of the
+  first, and the second is the highest-consequence line in the file while
+  changing about once a year per package.
+
+Tier A and B candidates become open PRs; tier C ones are needs-review drafts
+with a failing eligibility status and never reach the model. Out-of-scope or
+unusable artifacts still stop publication. The review request carries its tier
+and the digest of that tier's policy, so a verdict can never be replayed from
+one tier onto another. Prepare and finish independently verify publisher
 metadata, exact SHA, labels and the required GitHub Actions status integration.
 
 The main-only `aur-review` environment stores `CLAUDE_CODE_OAUTH_TOKEN`; only
 the review job receives it. Claude runs in an empty directory with a fresh config,
 safe mode, all built-in and MCP tools disabled, and an explicit environment
-without GitHub credentials. Its only input is the saved policy and zero-context
-diff; its only output is verdict/reason JSON. Keep `scripts/aur-review.py`, its
-tests, the workflow and `.github/aur-vet-prompt.md` synchronized. The finish job
+without GitHub credentials. Its only input is the saved policy and the payload
+its tier defines — a zero-context diff for tier A, the diff plus whole changed
+files for tier B, where every byte of candidate content sits inside a fence
+carrying the candidate's own commit hash so nothing it contains can forge a
+trusted preamble. Its only output is verdict/reason JSON. Keep
+`scripts/aur-review.py`, its tests, the workflow and **both** policy files
+(`.github/aur-vet-prompt.md`, `.github/aur-review-prompt.md`) synchronized. The finish job
 binds the response to the complete request and policy digest, repeats eligibility,
 and uses an atomic SHA-bound merge. FAIL/error posts escaped findings and holds
 the PR; model output never supplies shell code, an API endpoint or a target.
@@ -222,8 +268,8 @@ The completion heredocs **interpolate** the command lists from the arrays at run
 - Every `box <cmd>` invocation documented in `README.md`, `AGENTS.md`, the skills, and `setup.sh` exists in `_BOX_COMMANDS` (catches stale command names in docs)
 - `shellcheck --severity=error` passes on `bin/box`, `scripts/*.sh`, `setup.sh`, and `.githooks/pre-push`
 - **No workflow interpolates `${{ }}` into a `run:` block** (`scripts/check-workflow-injection.py`). Actions splices those into the script *source* before bash parses it, so an expression carrying untrusted text is a shell injection — bind it in `env:` and use `"$VAR"` instead. This is a real bug that shipped here, not a hypothetical
-- **The AUR diff validator accepts routine bumps and rejects the known attack shapes** (`scripts/test-aur-validator.sh`) — includes Cursor's literal indexed checksums (`sha512sums[0]=<hash>`); indexes must be decimal integers, never variables or arithmetic expressions. Rejection cases cover command substitution and appended commands on `pkgver=`/checksum lines, checksums downgraded to `SKIP`, added scriptlets, symlinked, executable or binary PKGBUILDs, hostile filenames
-- **The AUR pipeline contains untrusted content and model decisions** (`scripts/test-aur-review.py`): draft publication without checkout/execution, isolated tool-less review, forged/stale/moved targets, invalid verdicts, error comments, SHA-bound merges and explicit image builds.
+- **The AUR tier classifier puts every change in the right tier** (`scripts/test-aur-validator.sh`) — each case asserts A, B or C, because a case drifting C→B hands a human's decision to a model and B→A removes the review entirely, and neither shows up as a failure anywhere else. Tier A covers Cursor's literal indexed checksums (`sha512sums[0]=<hash>`; indexes must be decimal integers, never variables or arithmetic expressions) and makepkg's multi-line checksum arrays. Tier B covers added scriptlets, edited completion scripts and new build functions. Tier C covers command substitution and appended commands on `pkgver=`/checksum lines, `SKIP` downgrades, `source=`/`install=` assignments, symlinked/executable/binary PKGBUILDs, hostile filenames, renames, deletions, new packages, control characters, versions that do not move forward, and changes over the review caps
+- **The AUR pipeline contains untrusted content and model decisions** (`scripts/test-aur-review.py`): draft publication without checkout/execution, isolated tool-less review, per-tier payloads and policies, cross-tier verdict replay, unreadable candidate bytes, forged/stale/moved targets, invalid verdicts, error comments, SHA-bound merges and explicit image builds.
 
 The `build-base` and `build-boxes` jobs `needs: lint`, so a failed lint cannot coexist with newly published images.
 
