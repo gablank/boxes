@@ -16,11 +16,34 @@ ARG BUILD_SHA=unknown
 #   obsidian: markdown notes
 #   openai-codex: OpenAI's terminal coding agent (Claude Code ships in base)
 #   ipython: enhanced interactive Python shell (the `p3` alias)
+#   blender: 3D suite, driven by agents through MCP for Blender (below)
 RUN pacman -Syu --noconfirm --needed kubectl k9s qemu-base qemu-img glab \
     podman netavark aardvark-dns fuse-overlayfs slirp4netns firefox obsidian \
-    openai-codex ipython && \
+    openai-codex ipython blender && \
     pacman -Scc --noconfirm && \
     rm -rf /var/cache/pacman/pkg/*
+
+# MCP for Blender (github.com/ahujasid/blender-mcp), pinned. One PyPI release
+# ships both halves: the stdio MCP server that Claude Code/Codex launch, and the
+# Blender add-on it talks to on localhost:9876. The add-on goes into the system
+# `addons_core` dir: for the system scripts path Blender scans only that dir,
+# never `addons` (see addon_utils.paths()). The user enables it once; the pref
+# persists in $HOME. Don't also run `mcp-for-blender install-addon` — a second
+# copy in ~/.config/blender would clash with this pinned one.
+# /usr/local/bin/blender-mcp wraps the server to force its default-on telemetry
+# off and to point its add-on check at that system dir. The uv cache is removed
+# in the same RUN (layers are additive). Keep in sync with priv/Containerfile.
+ARG MCP_FOR_BLENDER_VERSION=2.0.3
+RUN UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/opt/uv-tools/bin UV_PYTHON_DOWNLOADS=never \
+        uv tool install --python /usr/bin/python3 "mcp-for-blender==${MCP_FOR_BLENDER_VERSION}" && \
+    set -- /usr/share/blender/[0-9]*/ && [ "$#" -eq 1 ] && [ -d "$1" ] && \
+    addons_dir="${1}scripts/addons_core" && [ -d "$addons_dir" ] && \
+    cp /opt/uv-tools/mcp-for-blender/lib/python3*/site-packages/blender_mcp/bundled/addon.py \
+        "$addons_dir/blender_mcp.py" && \
+    printf '#!/bin/sh\nexport DISABLE_TELEMETRY=true\nexport BLENDERMCP_ADDONS_DIR=%s\nexec /opt/uv-tools/bin/mcp-for-blender "$@"\n' \
+        "$addons_dir" > /usr/local/bin/blender-mcp && \
+    chmod +x /usr/local/bin/blender-mcp && \
+    rm -rf /root/.cache/uv
 
 # Rootless podman inside distrobox: the user's systemd manager has no cgroup
 # delegation, so the default systemd cgroup driver fails creating scope units
