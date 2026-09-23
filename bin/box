@@ -266,12 +266,14 @@ cmd_rescue() {
     name="$(get_box_name "$box")"
     ini_file="$REPO_ROOT/$box/distrobox.ini"
     safe_ini="$(mktemp)"
-    trap 'rm -f "$safe_ini"' RETURN
     grep -v '^init_hooks=\|^pre_init_hooks=' "$ini_file" > "$safe_ini"
     printf "${YELLOW}Rescue mode — assembling without init hooks${RESET}\n"
     ensure_host_dirs "$ini_file"
-    distrobox assemble create --file "$safe_ini"
-    _copy_config_to_container "$box" "$safe_ini"
+    local rc=0
+    distrobox assemble create --file "$safe_ini" || rc=$?
+    [[ $rc -eq 0 ]] && _copy_config_to_container "$box" "$safe_ini"
+    rm -f "$safe_ini"
+    [[ $rc -eq 0 ]] || return "$rc"
     local rflag
     rflag="$(root_flag "$box")"
     exec distrobox enter $rflag "$name"
@@ -869,7 +871,7 @@ _box_commands() {
         'stop:stop a box'
         'status:show detailed box info and build metadata'
         'doctor:check running boxes for silent drift'
-        'logs:show init log'
+        'logs:show container logs (podman logs pass-through)'
         'images:list available image versions on ghcr.io'
         'vendor-aur:re-vendor AUR PKGBUILDs and show a diff to vet'
         'completions:print or install shell completions'
