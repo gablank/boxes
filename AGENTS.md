@@ -61,11 +61,11 @@ aur/                        Vetted AUR PKGBUILDs vendored per pkgbase; images bu
   manifest.tsv              pkgbase → upstream git commit + fetch date (provenance)
   <pkgbase>/                PKGBUILD + local source files (*.install, *.sh, *.patch)
 priv/
-  Containerfile             Thin layer on base for privbox (adds glab, fuse2, firefox, obsidian, codex, ipython)
+  Containerfile             Thin layer on base for privbox (adds glab, fuse2, firefox, obsidian, codex, ipython, Blender + MCP for Blender)
   box.toml                  Container definition — source of truth (distrobox.ini is generated, gitignored)
   local-bin/                Scripts/binaries installed only into privbox
 work/
-  Containerfile             Thin layer on base for workbox (adds kubectl, k9s, qemu, glab, rootless podman, firefox, obsidian, codex, ipython)
+  Containerfile             Thin layer on base for workbox (adds kubectl, k9s, qemu, glab, rootless podman, firefox, obsidian, codex, ipython, Blender + MCP for Blender)
   box.toml                  Container definition — source of truth
   local-bin/                Scripts/binaries installed only into workbox
   systemd-user/             User units installed only into workbox (podman graceful shutdown)
@@ -221,6 +221,10 @@ must protect this policy; CODEOWNERS alone does not enforce review.
 ### Adding a Cursor extension
 
 Add it to the extension install loop in `Containerfile.base`.
+
+### Blender + MCP for Blender (priv, work)
+
+`priv/Containerfile` and `work/Containerfile` carry an **identical** block that installs `mcp-for-blender` pinned via `ARG MCP_FOR_BLENDER_VERSION` (`uv tool install` into `/opt/uv-tools`); `blender` itself is in each box's `pacman -Syu` line. **Sync contract: change one, change the other** (version bumps included). The block copies the add-on bundled in that wheel into Blender's system `scripts/addons_core` (on the system scripts path Blender scans only `addons_core`, not `addons`) and writes a `/usr/local/bin/blender-mcp` wrapper that sets `DISABLE_TELEMETRY=true` and `BLENDERMCP_ADDONS_DIR`. `blender` is in both boxes' `exported_apps`. User-side setup (enable the add-on, `claude mcp add` / `codex mcp add`) is documented in `README.md` and lives in `$HOME`. Details: `.agents/skills/containerfile-conventions/SKILL.md`.
 
 ## bin/box CLI
 

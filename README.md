@@ -23,8 +23,8 @@ Treat everything installed in either image as software trusted on the host.
 
 | Box | Purpose |
 |-----|---------|
-| `priv` | Personal development environment (adds glab, fuse2, firefox, obsidian, codex, ipython) |
-| `work` | Work environment (adds kubectl, k9s, qemu, glab, rootless podman, firefox, obsidian, codex, ipython) |
+| `priv` | Personal development environment (adds glab, fuse2, firefox, obsidian, codex, ipython, Blender + agent bridge) |
+| `work` | Work environment (adds kubectl, k9s, qemu, glab, rootless podman, firefox, obsidian, codex, ipython, Blender + agent bridge) |
 | `dev` | Minimal box for developing the box system itself (includes shellcheck and go-yq for local checks) |
 
 ## Quick Start
@@ -226,6 +226,35 @@ Verify from inside a box with `opensc-tool --list-readers` (or `pcsc_scan`, whic
 `age-plugin-yubikey` uses the PIV applet over the same PC/SC path, so it works wherever the CCID row above does: run it bare to create or list an identity, and `age -d -i <identity-file>` to decrypt (the plugin binary must be on `$PATH`, which it is in every box).
 
 For PIV-backed SSH, point `ssh` at a PKCS#11 module: `ssh -I /usr/lib/libykcs11.so` (YubiKey-specific) or `-I /usr/lib/opensc-pkcs11.so`. For `gpg --card-status`, add `disable-ccid` to `~/.gnupg/scdaemon.conf` so scdaemon uses PC/SC instead of hunting for a USB device it cannot see.
+
+## Blender with agents (priv, work)
+
+`priv` and `work` ship Blender and a pinned
+[MCP for Blender](https://github.com/ahujasid/blender-mcp) so Claude Code and
+Codex can drive a running Blender. The image provides `blender-mcp` (the MCP
+server, with its default-on telemetry forced off) and the matching Blender
+add-on. Blender is exported to the host app menu.
+
+One-time setup per box (all of it lives in the box's `$HOME`, so it survives
+`box upgrade`):
+
+1. Start Blender, open **Edit → Preferences → Add-ons**, enable **MCP for
+   Blender**. Then in the 3D viewport sidebar (`N`), open the **MCP for
+   Blender** tab and click **Connect to MCP server** (repeat each session, or
+   enable its auto-start option).
+2. Register the MCP server with each agent:
+
+   ```bash
+   claude mcp add --scope user blender -- blender-mcp
+   codex mcp add blender -- blender-mcp
+   ```
+
+Don't run `mcp-for-blender install-addon` — the add-on is already in the image,
+and a second copy would clash with it. The add-on runs agent-written Python
+inside Blender, outside Claude Code's sandbox; keep that tool on "ask" rather
+than auto-allowing it. Optional asset generators (Hyper3D, Hunyuan3D, Sketchfab)
+take API keys, which you enter in the add-on's preferences (stored in your
+`$HOME`) — never in this repo.
 
 ## Customization
 

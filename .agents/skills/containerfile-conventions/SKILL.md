@@ -1,6 +1,6 @@
 ---
 name: containerfile-conventions
-description: Conventions for editing Containerfiles in this repo. Use when modifying Containerfile.base, priv/Containerfile, work/Containerfile, adding packages, or adding Cursor extensions.
+description: Conventions for editing Containerfiles in this repo. Use when modifying Containerfile.base, priv/Containerfile, work/Containerfile, adding packages, adding Cursor extensions, or touching the Blender / MCP for Blender setup.
 ---
 
 # Containerfile Conventions
@@ -42,6 +42,16 @@ description: Conventions for editing Containerfiles in this repo. Use when modif
 
 - `containers.conf.d/10-box-rootless.conf` — `cgroup_manager = "cgroupfs"` and `events_logger = "file"`, because the user systemd manager inside distrobox has no cgroup delegation and no user journal.
 - `work/systemd-user/podman-graceful-shutdown.service` (COPY'd to `/etc/systemd/user/` and enabled via a `default.target.wants` symlink, since `systemctl --global enable` needs a running systemd) — runs `podman stop --all` from `ExecStop` so inner containers exit cleanly when the box stops. Without it, box shutdown SIGKILLs conmon before exits are recorded and containers reappear Dead/stuck after restart. Inner podman's RunRoot (`/run/user/UID/containers`) is on the box's own `/run` tmpfs (init boxes get a fresh `/run`; distrobox only binds the host's `/run/user/UID` into init=0 boxes), so reboot detection itself works — unclean shutdown was the problem.
+
+## Blender + MCP for Blender (priv and work)
+
+`priv/Containerfile` and `work/Containerfile` carry an **identical** Blender block — keep them in sync, including `ARG MCP_FOR_BLENDER_VERSION`:
+
+- `blender` comes from the official repos in each box's `pacman -Syu` line (`openai-codex` is already there).
+- `mcp-for-blender==${MCP_FOR_BLENDER_VERSION}` is installed with `uv tool install --python /usr/bin/python3` into `UV_TOOL_DIR=/opt/uv-tools` (`UV_PYTHON_DOWNLOADS=never`; the uv cache is removed in the same RUN). The PyPI wheel bundles both the MCP server and the Blender add-on, so one pin covers both. The old PyPI name `blender-mcp` is only a redirect package — always use `mcp-for-blender`.
+- The bundled `addon.py` is copied to `/usr/share/blender/<ver>/scripts/addons_core/blender_mcp.py`. On the system scripts path, Blender's `addon_utils.paths()` scans only `addons_core`, never `addons`. The step asserts exactly one version dir and that `addons_core` exists, so a layout change fails the build instead of shipping an add-on Blender never loads.
+- `/usr/local/bin/blender-mcp` is a wrapper (same pattern as the tailscale wrapper) that exports `DISABLE_TELEMETRY=true` (the server uploads usage data, and consented trajectories, by default) and `BLENDERMCP_ADDONS_DIR` (so the server's startup add-on check sees the system copy), then execs `/opt/uv-tools/bin/mcp-for-blender`.
+- To bump: change `MCP_FOR_BLENDER_VERSION` in both files, and check that `blender_mcp/telemetry.py` still honours `DISABLE_TELEMETRY` and that the wheel still ships `blender_mcp/bundled/addon.py`.
 
 ## Adding a new package
 
