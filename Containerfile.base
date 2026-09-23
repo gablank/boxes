@@ -38,11 +38,12 @@ RUN pacman -Qqn | pacman -S --noconfirm --overwrite '*' - && \
 #   Build toolchain + core utils: base-devel glib2 git openssh sudo ...
 #   Node.js runtime + npm: explicit dep for sandbox-runtime (see npm install below)
 #   Shell & terminal: zsh tmux btop ghostty
-#   Editors: nano vim (vi-vim-symlink from AUR aliases vi -> vim)
+#   Editors: nano vim (vi -> vim symlink created below)
 #   Python + polyglot runtime: python (also needed host-side for box.toml compiler), uv, mise (usage is a mise dep)
 #   Rust toolchain manager: rustup (toolchains installed per-user via init-user.sh)
 #   IaC: terraform
-#   Container mgmt: docker docker-compose (talks to host podman socket)
+#   Container mgmt: docker docker-compose (CLI only; talks to the host podman
+#     socket in priv, the box-local rootless podman in work — see shell-init.sh)
 #   Audio passthrough: pipewire libpipewire pipewire-alsa pipewire-pulse (client libs + ALSA/PA bridges for host PipeWire)
 #   Git ecosystem: github-cli, git-absorb (auto-fixup), diff-so-fancy
 #   Claude Code sandbox: bubblewrap (process isolation), socat (socket proxy),
