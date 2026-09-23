@@ -114,7 +114,7 @@ setup.sh                    One-shot setup script for new users / forks
 ## Image Build Flow
 
 1. A `changes` job detects which paths changed and computes the `date_tag`; on `schedule`/`workflow_dispatch` all flags are forced true
-2. `build-base` runs only if `Containerfile.base`, `scripts/`, or `local-bin/` changed
+2. `build-base` runs only if `Containerfile.base`, `scripts/`, `local-bin/`, or `aur/` changed (minus the exclusions in the `base:` filter: `aur/*.md` and the scripts that never reach an image)
 3. `build-boxes` builds the affected boxes in parallel via a dynamic matrix (after `build-base`); a box is included only if base changed OR its own directory changed
 4. All images are tagged `latest` + `YYYY-MM-DDTHHMM` (e.g. `2026-03-04T2100`, UTC) and pushed to ghcr.io
 5. Locally, `box upgrade <name>` pulls the latest image and recreates the container
