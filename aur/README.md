@@ -254,7 +254,10 @@ bypass. Emptying the bypass list also blocks the owner's ordinary new commits
 and non-AUR PRs. A bypass for the owner's identity may also apply to an agent
 using that identity; keep human bypass credentials separate from cloud agents.
 
-There are no automatic retries of GitHub writes or model calls. Check the PR
+The only automatic retry is the read-only AUR clone in `scripts/vendor-aur.sh`
+(three attempts, 30s then 60s backoff). If every attempt fails, the audit job
+prints the vendor output and fails without opening a PR; the next nightly run
+tries again. There are no automatic retries of GitHub writes or model calls. Check the PR
 and run before retrying an ambiguous failure; the finish phase refuses a moved,
 held or already-closed PR. A failed image-build dispatch after a confirmed merge
 requires manually dispatching `build.yml`, not repeating the merge. Authentication

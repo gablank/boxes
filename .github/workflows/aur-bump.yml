@@ -117,6 +117,8 @@ jobs:
       - name: Report fetch failure with no candidate
         if: steps.vendor.outcome != 'success' && steps.detect.outputs.changed != 'true'
         run: |
+          # `cat` never interprets its input as script.
+          cat "$RUNNER_TEMP/vendor.txt"
           echo '::error::Vendoring failed before producing a candidate; no PR can be opened.'
           exit 1
 

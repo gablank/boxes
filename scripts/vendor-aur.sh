@@ -36,9 +36,28 @@ update_manifest() {
   mv "$t" "$manifest"
 }
 
+# The AUR is intermittently unreachable or rate-limits CI runners; a clone is
+# read-only, so retrying it with backoff is safe.
+clone_aur() {
+  local base=$1 dest=$2 attempt delay=30
+  for attempt in 1 2 3; do
+    rm -rf "$dest"
+    if git clone --quiet "https://aur.archlinux.org/$base.git" "$dest"; then
+      return 0
+    fi
+    if [ "$attempt" -lt 3 ]; then
+      printf 'clone of %s failed (attempt %d/3), retrying in %ds\n' "$base" "$attempt" "$delay" >&2
+      sleep "$delay"
+      delay=$((delay * 2))
+    fi
+  done
+  printf 'clone of %s failed after 3 attempts\n' "$base" >&2
+  return 1
+}
+
 for base in "${targets[@]}"; do
   printf '\n=== %s ===\n' "$base"
-  git clone --quiet "https://aur.archlinux.org/$base.git" "$tmp/$base"
+  clone_aur "$base" "$tmp/$base"
   commit="$(git -C "$tmp/$base" rev-parse HEAD)"
 
   # Keep only build-relevant files; drop VCS/metadata and build artifacts.
