@@ -24,7 +24,7 @@ Treat everything installed in either image as software trusted on the host.
 | Box | Purpose |
 |-----|---------|
 | `priv` | Personal development environment (adds glab, fuse2, firefox, obsidian, codex, ipython, Blender + agent bridge) |
-| `work` | Work environment (adds kubectl, k9s, qemu, glab, rootless podman, firefox, obsidian, codex, ipython, Blender + agent bridge) |
+| `work` | Work environment (adds kubectl, k9s, qemu, glab, rootless podman, firefox, obsidian, codex, ipython, pnpm, Blender + agent bridge) |
 | `dev` | Minimal box for developing the box system itself (includes shellcheck and go-yq for local checks) |
 
 ## Quick Start
