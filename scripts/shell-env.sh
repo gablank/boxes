@@ -64,6 +64,14 @@ if [ -n "${HOME:-}" ]; then
     [ -d "$TMUX_TMPDIR" ] || mkdir -p "$TMUX_TMPDIR" 2>/dev/null || true
 fi
 
+# --- Default editor ---
+# `distrobox enter` inherits the host's environment, and Bazzite's profile.d sets
+# EDITOR=/usr/bin/msedit, a binary that exists only on the host. Unconditional for
+# the same reason as TMUX_TMPDIR: "only if unset" would keep the broken value.
+# Override in ~/.zshenv or ~/.zshrc, which zsh reads after this file.
+EDITOR=vim
+export EDITOR
+
 # --- Host session D-Bus and PulseAudio ---
 # These live here, not in shell-init.sh, because of a strict ordering
 # requirement: distrobox's own /etc/profile.d/distrobox_profile.sh defaults
