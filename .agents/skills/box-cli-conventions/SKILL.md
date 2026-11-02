@@ -30,11 +30,12 @@ Each command has exactly one responsibility:
 
 ## doctor checks
 
-`doctor` exists for failures that are **silent**: the box keeps working, so the problem only shows up later and far from its cause. Both current checks came from real incidents — host keys rotating on every recreate, and a hand-edited `sshd_config` that a recreate would have quietly reverted.
+`doctor` exists for failures that are **silent**: the box keeps working, so the problem only shows up later and far from its cause. All current checks came from real incidents — host keys rotating on every recreate, a hand-edited `sshd_config` that a recreate would have quietly reverted, and Bazzite's `EDITOR=/usr/bin/msedit` leaking into boxes that have no such binary.
 
 - Writable-layer edits to packaged files require **two** signals to be reported: a `pacman -Qkk` SHA256 mismatch *and* a `podman diff` `C` entry. The mismatch alone is not enough — `Containerfile.base` modifies plenty of packaged files at build time (the tailscale wrapper, the `.desktop` fixes), and those are rebuilt on every recreate. Only a change in the writable layer is one you actually lose.
 - `_DOCTOR_EXPECTED_MODIFIED` allowlists paths distrobox/podman rewrite at every container start (user/group files, `resolv.conf`, the `systemd-hook` stub in non-init boxes). Every entry is a check being skipped, so each one carries a comment saying why.
 - The SSH check tests both halves of the persistent-host-key mechanism separately, because they ship apart — the mount from `box.toml`, the drop-in and `box-sshd-keygen` from the image — and either half alone still rotates keys while looking configured.
+- The `EDITOR` check runs as the user through `zsh -c`, so `/etc/zsh/zshenv` and `~/.zshenv` apply, and passes the host's value with `--env`. Without that it would miss the leak it exists to catch: `podman exec` does not forward the host's environment, while `distrobox enter` does. It uses its own `podman exec` because `_box_exec` runs as root and takes no exec flags. An unset `EDITOR` passes, since tools fall back to their own default.
 - Helpers are `_doctor_ok` / `_doctor_warn` / `_doctor_fail` / `_doctor_hint`; only `_doctor_fail` sets the exit status. Use `warn` for "can't check this right now" (box not running), not for real problems.
 
 ## Image tag management
