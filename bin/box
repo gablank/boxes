@@ -606,6 +606,43 @@ _doctor_check_sshd() {
     fi
 }
 
+# `distrobox enter` forwards the host's environment, so a host default like
+# Bazzite's EDITOR=/usr/bin/msedit reaches boxes where that binary does not
+# exist. Nothing fails until some tool tries to open an editor.
+#
+# Runs as the user through zsh so /etc/zsh/zshenv and ~/.zshenv apply, and passes
+# the host's EDITOR explicitly because `podman exec` (unlike `distrobox enter`)
+# does not forward it. Only the first word is checked: EDITOR may carry arguments.
+_doctor_check_editor() {
+    local box="$1" name="$2" podman_cmd="podman" result
+    is_rootful "$box" && podman_cmd="sudo podman"
+
+    result="$($podman_cmd exec --user "$(id -u)" --env "EDITOR=${EDITOR:-}" "$name" zsh -c '
+        if [ -z "$EDITOR" ]; then
+            echo "unset"
+        elif command -v "${EDITOR%% *}" >/dev/null; then
+            echo "ok $EDITOR"
+        else
+            echo "missing $EDITOR"
+        fi' 2>/dev/null || true)"
+
+    case "$result" in
+        unset)
+            _doctor_ok "EDITOR is unset — tools use their own default"
+            ;;
+        ok\ *)
+            _doctor_ok "EDITOR resolves (${result#ok })"
+            ;;
+        missing\ *)
+            _doctor_fail "EDITOR is not a command in this box: ${result#missing }"
+            _doctor_hint "Likely inherited from the host. shell-env.sh sets it; if the image predates that, run: box upgrade $box"
+            ;;
+        *)
+            _doctor_warn "could not check EDITOR"
+            ;;
+    esac
+}
+
 cmd_doctor() {
     local boxes box name status rflag
     if [[ $# -ge 1 ]]; then
@@ -627,6 +664,7 @@ cmd_doctor() {
         fi
         _doctor_check_pkg_edits "$box" "$name"
         _doctor_check_sshd "$box" "$name"
+        _doctor_check_editor "$box" "$name"
         echo ""
     done
 
