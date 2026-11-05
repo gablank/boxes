@@ -81,6 +81,26 @@ RUN pacman -S --noconfirm --needed \
     pacman -Scc --noconfirm && \
     rm -rf /var/cache/pacman/pkg/*
 
+# distrobox's first-start setup, done at build time. On a container's first
+# start distrobox-init runs `pacman -Syu` plus an install of its own dependency
+# list unless /.containersetupdone exists. Since every box is recreated on
+# `box enter`/`box upgrade` (`replace = true`), that meant downloading the whole
+# delta since last night's build on every recreate, and a dropped connection
+# mid-download left a stale pacman lock that failed every later start. The
+# list below is what distrobox-init's setup_pacman installs that the packages
+# above don't already cover: glibc-locales supplies the host's locale (the
+# image otherwise has only C/POSIX), mesa/vulkan-* the GPU userspace for
+# exported apps. Re-check it against setup_pacman when the host's distrobox
+# is upgraded.
+RUN pacman -S --noconfirm --needed \
+    bash-completion bc mlocate mtr nss-mdns pigz rsync tcpdump time traceroute \
+    vte-common words xorg-xauth \
+    glibc-locales \
+    mesa vulkan-intel vulkan-radeon && \
+    pacman -Scc --noconfirm && \
+    rm -rf /var/cache/pacman/pkg/* && \
+    touch /.containersetupdone
+
 # Switch iptables/ip6tables to nftables backend (host kernel lacks ip_tables module)
 RUN ln -sf /usr/bin/xtables-nft-multi /usr/bin/iptables && \
     ln -sf /usr/bin/xtables-nft-multi /usr/bin/iptables-restore && \
