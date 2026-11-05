@@ -105,9 +105,6 @@ ALLOWED_PKGBUILD = [
     # unterminated, so each permitted shape exists with and without its ')'.
     re.compile(rf"{CKSUM_ARRAY}=\($"),
     re.compile(rf"{CKSUM_ARRAY}=\({ENTRIES}\)?$"),
-    # Cursor replaces its initial SKIP with sha512sums[0]=<hash>. Bash array
-    # subscripts are arithmetic expressions, so allow only a decimal literal.
-    re.compile(rf"{CKSUM_ARRAY}\[(?:0|[1-9][0-9]*)\]={QUOTED_CKSUM}$"),
     re.compile(rf"{ENTRIES}\)?$"),
     re.compile(r"\)$"),
 ]

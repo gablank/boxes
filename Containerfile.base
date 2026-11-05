@@ -83,10 +83,11 @@ RUN pacman -S --noconfirm --needed \
 
 # distrobox's first-start setup, done at build time. On a container's first
 # start distrobox-init runs `pacman -Syu` plus an install of its own dependency
-# list unless /.containersetupdone exists. Since every box is recreated on
-# `box enter`/`box upgrade` (`replace = true`), that meant downloading the whole
-# delta since last night's build on every recreate, and a dropped connection
-# mid-download left a stale pacman lock that failed every later start. The
+# list unless /.containersetupdone exists. Since `box upgrade`, `assemble` and
+# `rescue` all recreate the box (`replace = true`), that meant downloading the
+# whole delta since last night's build on every recreate, and a dropped
+# connection mid-download left a stale pacman lock that failed every later
+# start. The
 # list below is what distrobox-init's setup_pacman installs that the packages
 # above don't already cover: glibc-locales supplies the host's locale (the
 # image otherwise has only C/POSIX), mesa/vulkan-* the GPU userspace for
@@ -150,7 +151,7 @@ USER builduser
 RUN cd /tmp/aur/yay && makepkg -si --noconfirm --needed && mv ./*.pkg.tar* /out/
 
 # Single-package pkgbases — build each and collect every package it produces:
-#   IDEs / editors: visual-studio-code-bin, cursor-bin
+#   IDE / editor: visual-studio-code-bin
 #   Zsh framework: oh-my-zsh-git
 #   Browser (exported via distrobox): google-chrome (desktop file patched later by chrome-wrapper)
 #   Database CLI tools (mongodump, mongorestore, etc.): mongodb-tools
@@ -158,7 +159,7 @@ RUN cd /tmp/aur/yay && makepkg -si --noconfirm --needed && mv ./*.pkg.tar* /out/
 #   Coding-agent supervisor (prebuilt release binary): herdr-bin — wanted in
 #     priv and work, but the AUR build scaffolding only exists here, so dev
 #     gets it too
-RUN for b in visual-studio-code-bin cursor-bin oh-my-zsh-git google-chrome mongodb-tools claude-code herdr-bin; do \
+RUN for b in visual-studio-code-bin oh-my-zsh-git google-chrome mongodb-tools claude-code herdr-bin; do \
       ( cd "/tmp/aur/$b" && makepkg -si --noconfirm --needed && mv ./*.pkg.tar* /out/ ) || exit 1; \
     done
 
@@ -196,14 +197,16 @@ RUN ln -sf /usr/bin/vim /usr/bin/vi
 RUN npm install -g @anthropic-ai/sandbox-runtime && \
     rm -rf /root/.npm
 
-# Pre-install Cursor extensions to a system-wide directory.
-# Uses /usr/bin/cursor directly (before wrapper is created).
+# Pre-install VS Code extensions to a system-wide directory.
+# Uses /usr/bin/code directly (before wrapper is created). As root, code refuses
+# to start without --user-data-dir, so it gets a throwaway one. A failed install
+# fails the build, otherwise a box could silently ship without its extensions.
 # The chmod lets runtime users write temp files inside extension directories
 # (e.g. debugpy). It must stay in this RUN: chmod -R over a tree from an earlier
 # layer copies every file up into a new layer and shipped the ~600 MB twice.
-RUN mkdir -p /opt/cursor-extensions && \
+RUN mkdir -p /opt/vscode-extensions && \
+    user_data_dir=$(mktemp -d) && \
     for ext in \
-        anysphere.cursorpyright \
         buenon.scratchpads \
         charliermarsh.ruff \
         eamodio.gitlens \
@@ -212,6 +215,7 @@ RUN mkdir -p /opt/cursor-extensions && \
         mads-hartmann.bash-ide-vscode \
         ms-python.debugpy \
         ms-python.python \
+        ms-python.vscode-pylance \
         redhat.vscode-yaml \
         rust-lang.rust-analyzer \
         tamasfe.even-better-toml \
@@ -220,20 +224,21 @@ RUN mkdir -p /opt/cursor-extensions && \
         anthropic.claude-code \
         bierner.markdown-mermaid; \
     do \
-        /usr/bin/cursor --no-sandbox --extensions-dir /opt/cursor-extensions \
-            --install-extension "$ext" || true; \
+        /usr/bin/code --no-sandbox --user-data-dir "$user_data_dir" \
+            --extensions-dir /opt/vscode-extensions \
+            --install-extension "$ext" || exit 1; \
     done && \
-    chmod -R a+w /opt/cursor-extensions
+    rm -rf "$user_data_dir" && \
+    chmod -R a+w /opt/vscode-extensions
 
 # Wrapper so both CLI and .desktop launch use the pre-installed extensions
-RUN printf '#!/bin/sh\nexec /usr/bin/cursor --extensions-dir /opt/cursor-extensions "$@"\n' \
-        > /usr/local/bin/cursor && \
-    chmod +x /usr/local/bin/cursor
+RUN printf '#!/bin/sh\nexec /usr/bin/code --extensions-dir /opt/vscode-extensions "$@"\n' \
+        > /usr/local/bin/code && \
+    chmod +x /usr/local/bin/code
 
-RUN desktop_file=$(find /usr/share/applications -iname '*cursor*' 2>/dev/null | head -1) && \
-    if [ -n "$desktop_file" ]; then \
-        sed -i 's|\(Exec=.*cursor[^ ]*\)|\1 --extensions-dir /opt/cursor-extensions|' "$desktop_file"; \
-    fi
+RUN sed -i 's|^Exec=code|Exec=/usr/local/bin/code|' \
+        /usr/share/applications/com.microsoft.VSCode.desktop \
+        /usr/share/applications/com.microsoft.VSCode.UrlHandler.desktop
 
 RUN chmod u+s /usr/bin/newuidmap /usr/bin/newgidmap
 

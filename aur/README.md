@@ -37,9 +37,8 @@ artifact and its accompanying checksum are safe.
 The recipe pins do not cover all downloaded content. `oh-my-zsh-git` fetches
 floating upstream Git HEAD with `SKIP`; the gke-gcloud-auth-plugin split package
 runs `gcloud components install` without a repository checksum pin. Claude's
-license document is also unpinned, although its binary is checksummed. Cursor's
-initial `SKIP` is overwritten with a checksum later in the recipe. Outside AUR,
-the image installs unpinned npm dependencies and editor extensions. These are
+license document is also unpinned, although its binary is checksummed. Outside
+AUR, the image installs unpinned npm dependencies and editor extensions. These are
 additional upstream trust relationships.
 
 ## Refreshing / bumping a package
@@ -78,9 +77,8 @@ checksum, what is inside that download is not what this review is for. The **AUR
 packager is not trusted.** Everything the packager controls is text in the diff,
 and that text runs at moments that matter -- `*.install` scriptlets run as root
 during the image build, `google-cloud-cli.sh` is installed to `/etc/profile.d`
-and sourced by every login shell in every box, `rg.sh` is installed *over*
-ripgrep inside Cursor, and the `herdr-bin` completion files are sourced into
-every interactive shell. Reading that text is the whole control.
+and sourced by every login shell in every box, and the `herdr-bin` completion
+files are sourced into every interactive shell. Reading that text is the whole control.
 
 Note what the provenance check does and does not prove. It establishes that the
 vendored copy is byte-identical to upstream AUR at the pinned commit -- that we
@@ -132,6 +130,8 @@ review deliberately:
   2026-09-08 finding, `pkgver=1.2.3$(...)`, which is both a version and a
   command. There is no legitimate form of that line, so trusted code rejects it
   rather than asking anyone's judgment;
+- an indexed checksum assignment such as `sha512sums[0]=<hash>`: bash evaluates
+  the subscript as arithmetic, and no vendored recipe needs one;
 - any change to a `source=`, `noextract=`, `install=` or `validpgpkeys=`
   assignment. These decide where an artifact comes from and what runs as root at
   install time. They change roughly once a year per package, so the cost of
@@ -331,7 +331,7 @@ diff "$audit_tmp/before.txt" "$audit_tmp/after.txt"
 ```
 
 Every host must be the software vendor's own (`dl.google.com`,
-`downloads.cursor.com`, `update.code.visualstudio.com`, `downloads.claude.ai`,
+`update.code.visualstudio.com`, `downloads.claude.ai`,
 `gitlab.archlinux.org`, `github.com`). A new host, an IP literal, or a shortener
 is a stop-and-investigate. Shared hosting domains such as `github.com` do not
 identify a vendor: verify the exact repository and path as well as the hostname.

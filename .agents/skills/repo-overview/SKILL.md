@@ -9,7 +9,7 @@ This repo defines distrobox container environments built via CI and managed loca
 
 ## Architecture
 
-- `Containerfile.base` - shared base image (Arch Linux + pacman + AUR packages built from vendored PKGBUILDs + Cursor extensions)
+- `Containerfile.base` - shared base image (Arch Linux + pacman + AUR packages built from vendored PKGBUILDs + VS Code extensions)
 - `aur/` - vetted AUR PKGBUILDs vendored per pkgbase; the base image builds AUR packages only from these, never fetching from the AUR (supply-chain control; see `aur/README.md`)
 - `priv/Containerfile`, `work/Containerfile`, `dev/Containerfile` - thin layers adding box-specific packages
 - Images are built by GitHub Actions on every push to `main` and nightly, and pushed to `ghcr.io/<repo-owner>/box-*` (derived from `github.repository_owner`, so forks build to their own registry)

@@ -109,7 +109,8 @@ m_skip_to_real_checksum() {
   sed -i "s/^sha256sums=.*/sha256sums=('3333333333333333333333333333333333333333333333333333333333333333')/" "$1/aur/demo-bin/PKGBUILD"
 }
 
-# Cursor keeps SKIP in the initial array and overwrites it with a literal hash.
+# Bash array subscripts are arithmetic expressions, and no vendored recipe uses
+# one on a checksum, so even a literal index stays out of the routine tiers.
 b_indexed_checksum() {
   printf "\nsha512sums=('SKIP')\nsha512sums[0]=%0128d\n" 0 >> "$1/aur/demo-bin/PKGBUILD"
 }
@@ -117,16 +118,6 @@ b_indexed_checksum() {
 m_indexed_checksum() {
   sed -i '/^sha512sums\[0\]=/d' "$1/aur/demo-bin/PKGBUILD"
   printf 'sha512sums[0]=%0128d\n' 1 >> "$1/aur/demo-bin/PKGBUILD"
-}
-
-m_indexed_checksum_quoted() {
-  sed -i '/^sha512sums\[0\]=/d' "$1/aur/demo-bin/PKGBUILD"
-  printf "sha512sums[0]='%0128d'\n" 1 >> "$1/aur/demo-bin/PKGBUILD"
-}
-
-m_indexed_checksum_double_quoted() {
-  sed -i '/^sha512sums\[0\]=/d' "$1/aur/demo-bin/PKGBUILD"
-  printf 'sha512sums[0]="%0128d"\n' 1 >> "$1/aur/demo-bin/PKGBUILD"
 }
 
 m_indexed_checksum_hostile() {
@@ -296,9 +287,6 @@ echo "  tier A, merged on the literal grammar alone:"
 expect A "ordinary version + checksum + manifest bump" m_ordinary_bump
 expect A "pkgrel-only rebuild"                         m_pkgrel_only
 expect A "SKIP replaced by a real checksum"            m_skip_to_real_checksum b_checksum_is_skip
-expect A "Cursor-style indexed checksum bump"          m_indexed_checksum b_indexed_checksum
-expect A "single-quoted indexed checksum"              m_indexed_checksum_quoted b_indexed_checksum
-expect A "double-quoted indexed checksum"              m_indexed_checksum_double_quoted b_indexed_checksum
 expect A "_commit moving with a pkgver bump"           m_commit_moves_with_version b_has_commit
 MULTILINE_OLD="$(printf 'b%.0s' $(seq 64))"
 MULTILINE_NEW="$(printf 'c%.0s' $(seq 64))"
@@ -316,7 +304,8 @@ expect C "pkgver moved backwards"                      m_version_downgrade
 expect C "pkgrel moved backwards"                      m_version_unchanged_pkgrel_down
 expect C "_commit moved with no pkgver bump"           m_commit_moves_without_version b_has_commit
 echo
-echo "  tier C -- indexed checksums must remain literal:"
+echo "  tier C -- indexed checksums are never routine:"
+expect C "indexed checksum: literal" m_indexed_checksum b_indexed_checksum
 for INDEXED_ATTACK in subscript variable arithmetic value appended continuation skip; do
   expect C "indexed checksum: $INDEXED_ATTACK" m_indexed_checksum_hostile b_indexed_checksum
 done
