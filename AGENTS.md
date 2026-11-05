@@ -99,7 +99,7 @@ setup.sh                    One-shot setup script for new users / forks
 .github/workflows/
   build.yml                 Nightly + on-push CI build and image cleanup
   aur-bump.yml              Nightly re-vendor → publish PR/draft → prepare → isolated review → merge/comment.
-                            Tier C changes become needs-review drafts. Claude has no GitHub token/tools;
+                            Tier C changes and partial vendors (some AUR clone failed after retries) become needs-review drafts; a partial vendor also fails the run via `vendor-status`. Claude has no GitHub token/tools;
                             finish holds merge permissions and explicitly dispatches image builds.
   CODEOWNERS                Scope guard: everything needs owner review except aur/ (requires live review rules)
   aur-vet-prompt.md         Tier A policy: routine literal version/checksum bumps.

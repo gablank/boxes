@@ -87,6 +87,7 @@ jobs:
       contents: read
     outputs:
       changed: ${{ steps.detect.outputs.changed }}
+      vendor: ${{ steps.vendor.outcome }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -326,3 +327,22 @@ jobs:
           BUMP_BRANCH: ${{ needs.publish.outputs.branch }}
           PUBLISH_ATTEMPT: ${{ needs.publish.outputs.publish_attempt }}
         run: python3 scripts/aur-review.py finish --input "$RUNNER_TEMP/review-result/result.json"
+
+  # A partial candidate is already published as a needs-review draft, but the
+  # vendor step is continue-on-error, so without this the run would be green.
+  # It is a separate job so that publish's `needs`/`if` stay untouched: a red
+  # audit job would skip publish and the draft would never be opened.
+  vendor-status:
+    needs: [audit, publish]
+    if: >-
+      always() && !cancelled() &&
+      needs.audit.outputs.changed == 'true' && needs.audit.outputs.vendor != 'success' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Fail the run on a partial vendor
+        run: |
+          echo '::error::Vendoring failed for some packages; the candidate is partial. See the audit job log.'
+          exit 1

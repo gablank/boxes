@@ -255,9 +255,13 @@ and non-AUR PRs. A bypass for the owner's identity may also apply to an agent
 using that identity; keep human bypass credentials separate from cloud agents.
 
 The only automatic retry is the read-only AUR clone in `scripts/vendor-aur.sh`
-(three attempts, 30s then 60s backoff). If every attempt fails, the audit job
-prints the vendor output and fails without opening a PR; the next nightly run
-tries again. There are no automatic retries of GitHub writes or model calls. Check the PR
+(three attempts, 30s then 60s backoff). A package whose clone still fails keeps
+its committed copy while the others update, and the script exits non-zero
+listing it. If nothing else changed, the audit job prints the vendor output and
+fails without opening a PR. Otherwise the partial candidate is published as a
+`needs-review` draft, never reviewed or merged automatically, and the
+`vendor-status` job marks the run failed. That is its own job because failing
+audit would skip publish and drop the draft. The next nightly run tries again. There are no automatic retries of GitHub writes or model calls. Check the PR
 and run before retrying an ambiguous failure; the finish phase refuses a moved,
 held or already-closed PR. A failed image-build dispatch after a confirmed merge
 requires manually dispatching `build.yml`, not repeating the merge. Authentication

@@ -512,7 +512,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertIsNone(workflow["on"]["workflow_dispatch"])
         self.assertEqual(workflow["permissions"], {})
         jobs = workflow["jobs"]
-        self.assertEqual(set(jobs), {"audit","publish","prepare","review","finish"})
+        self.assertEqual(set(jobs), {"audit","publish","prepare","review","finish","vendor-status"})
         for name, job in jobs.items():
             self.assertIn("github.ref == 'refs/heads/main'", job["if"])
             self.assertIn("github.event_name == 'schedule'", job["if"])
@@ -537,6 +537,11 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(set(jobs["finish"]["needs"]), {"publish","prepare","review"})
         self.assertIn("always() && !cancelled()", jobs["finish"]["if"])
         self.assertFalse(jobs["finish"]["steps"][0]["with"]["persist-credentials"])
+        # A partial vendor turns the run red from its own job, never by
+        # failing audit, which would skip publish and drop the draft.
+        self.assertEqual(jobs["vendor-status"]["permissions"], {})
+        self.assertIn("needs.audit.outputs.vendor != 'success'", jobs["vendor-status"]["if"])
+        self.assertNotIn("vendor", jobs["publish"]["if"])
         self.assertNotIn("AUR_REVIEW_ROUTINE", json.dumps(workflow))
 
 

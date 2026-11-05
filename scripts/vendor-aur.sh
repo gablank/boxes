@@ -55,9 +55,15 @@ clone_aur() {
   return 1
 }
 
+# A package that cannot be fetched keeps its committed copy; the rest still
+# update, so one broken package never holds back the others.
+failed=()
 for base in "${targets[@]}"; do
   printf '\n=== %s ===\n' "$base"
-  clone_aur "$base" "$tmp/$base"
+  if ! clone_aur "$base" "$tmp/$base"; then
+    failed+=("$base")
+    continue
+  fi
   commit="$(git -C "$tmp/$base" rev-parse HEAD)"
 
   # Keep only build-relevant files; drop VCS/metadata and build artifacts.
@@ -76,5 +82,10 @@ for base in "${targets[@]}"; do
   cp -a "$tmp/$base" "$aur_dir/$base"
   update_manifest "$base" "$commit" "$(date -u +%Y-%m-%d)"
 done
+
+if [ "${#failed[@]}" -gt 0 ]; then
+  printf '\nFailed to fetch (left unchanged): %s\n' "${failed[*]}" >&2
+  exit 1
+fi
 
 printf '\nReview the diff above, then: git add aur/ && git commit\n'
