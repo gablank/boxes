@@ -23,8 +23,8 @@ Treat everything installed in either image as software trusted on the host.
 
 | Box | Purpose |
 |-----|---------|
-| `priv` | Personal development environment (adds glab, fuse2, firefox, obsidian, codex, ipython, Blender + agent bridge) |
-| `work` | Work environment (adds kubectl, k9s, qemu, glab, rootless podman, firefox, obsidian, codex, ipython, pnpm, Blender + agent bridge) |
+| `priv` | Personal development environment (adds glab, fuse2, firefox, obsidian, codex, ipython, nix, Blender + agent bridge) |
+| `work` | Work environment (adds kubectl, k9s, qemu, glab, rootless podman, firefox, obsidian, codex, ipython, pnpm, nix, Blender + agent bridge) |
 | `dev` | Minimal box for developing the box system itself (includes shellcheck and go-yq for local checks) |
 
 ## Quick Start
@@ -226,6 +226,21 @@ Verify from inside a box with `opensc-tool --list-readers` (or `pcsc_scan`, whic
 `age-plugin-yubikey` uses the PIV applet over the same PC/SC path, so it works wherever the CCID row above does: run it bare to create or list an identity, and `age -d -i <identity-file>` to decrypt (the plugin binary must be on `$PATH`, which it is in every box).
 
 For PIV-backed SSH, point `ssh` at a PKCS#11 module: `ssh -I /usr/lib/libykcs11.so` (YubiKey-specific) or `-I /usr/lib/opensc-pkcs11.so`. For `gpg --card-status`, add `disable-ccid` to `~/.gnupg/scdaemon.conf` so scdaemon uses PC/SC instead of hunting for a USB device it cannot see.
+
+## Nix (priv, work)
+
+`priv` and `work` ship the [Nix](https://nixos.org/) package manager in
+multi-user mode, with `nix-command` and flakes enabled — so `nix run
+nixpkgs#hello`, `nix shell`, `nix profile install` and `nix develop` work out of
+the box. The daemon starts on first use.
+
+Each box's Nix store lives in `~/distrobox/<box>/nix` on the host (mounted at
+`/nix`), so installed packages and profiles survive `box upgrade`. The two boxes
+have separate stores. Deleting that directory wipes the box's Nix state.
+
+Change Nix settings in the box's `Containerfile`, not in `/etc/nix/nix.conf`
+inside the box — that edit is lost on the next recreate. Per-user settings in
+`~/.config/nix/nix.conf` persist as usual.
 
 ## Blender with agents (priv, work)
 

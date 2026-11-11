@@ -61,11 +61,11 @@ aur/                        Vetted AUR PKGBUILDs vendored per pkgbase; images bu
   manifest.tsv              pkgbase → upstream git commit + fetch date (provenance)
   <pkgbase>/                PKGBUILD + local source files (*.install, *.sh, *.patch)
 priv/
-  Containerfile             Thin layer on base for privbox (adds glab, fuse2, firefox, obsidian, codex, ipython, Blender + MCP for Blender)
+  Containerfile             Thin layer on base for privbox (adds glab, fuse2, firefox, obsidian, codex, ipython, nix, Blender + MCP for Blender)
   box.toml                  Container definition — source of truth (distrobox.ini is generated, gitignored)
   local-bin/                Scripts/binaries installed only into privbox
 work/
-  Containerfile             Thin layer on base for workbox (adds kubectl, k9s, qemu, glab, rootless podman, firefox, obsidian, codex, ipython, pnpm, Blender + MCP for Blender)
+  Containerfile             Thin layer on base for workbox (adds kubectl, k9s, qemu, glab, rootless podman, firefox, obsidian, codex, ipython, pnpm, nix, Blender + MCP for Blender)
   box.toml                  Container definition — source of truth
   local-bin/                Scripts/binaries installed only into workbox
   systemd-user/             User units installed only into workbox (podman graceful shutdown)
@@ -222,6 +222,10 @@ must protect this policy; CODEOWNERS alone does not enforce review.
 ### Adding a VS Code extension
 
 Add it to the extension install loop in `Containerfile.base`.
+
+### Nix (priv, work)
+
+`priv/Containerfile` and `work/Containerfile` carry an **identical** Nix block — **sync contract: change one, change the other.** `nix` comes from the official repos in each box's `pacman -Syu` line and runs multi-user (`nix-daemon.socket` enabled at build time; builds run as the `nixbld` users from the package's sysusers.d). `experimental-features = nix-command flakes` is appended to `/etc/nix/nix.conf` at build time — set Nix options there, never by editing `nix.conf` inside a box (the next recreate reverts it). **The store must be persisted:** each box's `box.toml` mounts `${HOME}/distrobox/<box>/nix` at `/nix`, which holds the store, the Nix database and every per-user profile that `~/.nix-profile` points into; without the mount every recreate empties the store and leaves `~/.nix-profile` dangling. The package never creates `/nix/store` (every nix command then fails with `opening file "/nix/store": No such file or directory`), and a build-time `mkdir` is hidden by the mount, so `/etc/tmpfiles.d/box-nix-store.conf` creates it (`1775 root:nixbld`) at boot. There is no `nix-users` group; the daemon socket is mode 0666. **Agent trap:** nix talks to the daemon over a unix socket, which the Claude Code Bash sandbox blocks — it looks like a hang or a false `No such file`, and the socket appears owned by `nobody:nobody`; run nix with `dangerouslyDisableSandbox`. Never share one `/nix` between boxes (two daemons, one database). `dev` has no Nix: it has no init, so nothing would run the daemon. PATH comes from the package's `/etc/profile.d/nix-daemon.sh`, i.e. login shells only (same coverage as other `profile.d` env). Build sandboxing is left at Nix's default; a rootful box has no `CAP_SYS_ADMIN`, so Nix may fall back to unsandboxed builds (`sandbox-fallback`). Details: `.agents/skills/containerfile-conventions/SKILL.md`.
 
 ### Blender + MCP for Blender (priv, work)
 

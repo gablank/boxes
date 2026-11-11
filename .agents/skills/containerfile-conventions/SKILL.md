@@ -1,6 +1,6 @@
 ---
 name: containerfile-conventions
-description: Conventions for editing Containerfiles in this repo. Use when modifying Containerfile.base, priv/Containerfile, work/Containerfile, adding packages, adding VS Code extensions, or touching the Blender / MCP for Blender setup.
+description: Conventions for editing Containerfiles in this repo. Use when modifying Containerfile.base, priv/Containerfile, work/Containerfile, adding packages, adding VS Code extensions, or touching the Blender / MCP for Blender or Nix setup.
 ---
 
 # Containerfile Conventions
@@ -43,6 +43,19 @@ description: Conventions for editing Containerfiles in this repo. Use when modif
 
 - `containers.conf.d/10-box-rootless.conf` — `cgroup_manager = "cgroupfs"` and `events_logger = "file"`, because the user systemd manager inside distrobox has no cgroup delegation and no user journal.
 - `work/systemd-user/podman-graceful-shutdown.service` (COPY'd to `/etc/systemd/user/` and enabled via a `default.target.wants` symlink, since `systemctl --global enable` needs a running systemd) — runs `podman stop --all` from `ExecStop` so inner containers exit cleanly when the box stops. Without it, box shutdown SIGKILLs conmon before exits are recorded and containers reappear Dead/stuck after restart. Inner podman's RunRoot (`/run/user/UID/containers`) is on the box's own `/run` tmpfs (init boxes get a fresh `/run`; distrobox only binds the host's `/run/user/UID` into init=0 boxes), so reboot detection itself works — unclean shutdown was the problem.
+
+## Nix (priv and work)
+
+`priv/Containerfile` and `work/Containerfile` carry an **identical** Nix block — keep them in sync:
+
+- `nix` is in each box's `pacman -Syu` line (official `extra/nix`, so no vendoring). It is multi-user: `nix-daemon.socket` is enabled with `systemctl enable` at build time and starts the daemon on first use; builds run as the `nixbld` users created by the package's `sysusers.d`.
+- `experimental-features = nix-command flakes` is appended to `/etc/nix/nix.conf` in the image. Further Nix options go in that same `RUN`, never in a box's writable layer.
+- `/nix` is a `[[mount-dir]]` in each box's `box.toml` (`${HOME}/distrobox/<box>/nix`) — the store, database and per-user profiles live there and must survive recreates. One store per box. See `.agents/skills/box-toml-conventions/SKILL.md` § "Nix store per box".
+- `/nix/store` is created at boot by `/etc/tmpfiles.d/box-nix-store.conf` (`d /nix/store 1775 root nixbld -`). The package does not create it, nix fails immediately without it, and a build-time `mkdir` would be hidden by the `/nix` mount. `systemd-tmpfiles-setup` runs in `sysinit.target`, before the daemon socket. There is no `nix-users` group to join — the daemon socket is already mode 0666.
+- Agents: the Claude Code Bash sandbox blocks the daemon's unix socket (looks like a hang or a false `No such file`; the socket shows as `nobody:nobody`). Run nix with `dangerouslyDisableSandbox`.
+- PATH setup comes from the package's `/etc/profile.d/nix-daemon.sh`, so login shells get `~/.nix-profile/bin`. If non-login shells ever need it, add it to `scripts/shell-env.sh`.
+- Not in `dev`: it has no init, so nothing would run `nix-daemon`.
+- The build sandbox is left at Nix's default. A rootful box lacks `CAP_SYS_ADMIN`, so Nix may fall back to unsandboxed builds (`sandbox-fallback = true` is the default); set `sandbox = false` explicitly only if builds fail with a sandbox error.
 
 ## Blender + MCP for Blender (priv and work)
 

@@ -125,6 +125,19 @@ Keys are generated at runtime and never committed or baked into the image — th
 
 Boxes with `init = false` (e.g. `dev`) never start `sshd` and need no mount.
 
+## Nix store per box
+
+Boxes whose Containerfile installs Nix (`priv`, `work`) need `/nix` persisted — the store, the Nix database and the per-user profiles that `~/.nix-profile` points into all live there, and the image's `/nix` is in the writable layer that every recreate discards:
+
+```toml
+[[mount-dir]]
+host = "${HOME}/distrobox/<box>/nix"
+container = "/nix"
+options = "rw,z"
+```
+
+One directory per box — never point two boxes at the same store. Deleting the host directory wipes that box's Nix store and profiles. Nix's download cache is `~/.cache/nix`, already in the persistent home.
+
 ### Docker-compose services on the box tailnet
 
 To make compose services share the box's network namespace (reachable via `localhost` and on the box's tailnet):
