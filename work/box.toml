@@ -28,6 +28,13 @@ host = "${HOME}/distrobox/workbox/ssh-hostkeys"
 container = "/var/lib/box-ssh"
 options = "rw,z"
 
+# Nix store, database and per-user profiles (see work/Containerfile). One per
+# box: a store shared between boxes would be managed by two daemons at once.
+[[mount-dir]]
+host = "${HOME}/distrobox/workbox/nix"
+container = "/nix"
+options = "rw,z"
+
 # Workbox runs its own rootless podman (see work/Containerfile) so containers
 # spawned via docker/compose live in workbox's netns. The host podman socket
 # is intentionally NOT mounted here; priv still uses it.

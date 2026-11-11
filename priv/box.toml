@@ -28,6 +28,13 @@ host = "${HOME}/distrobox/privbox/ssh-hostkeys"
 container = "/var/lib/box-ssh"
 options = "rw,z"
 
+# Nix store, database and per-user profiles (see priv/Containerfile). One per
+# box: a store shared between boxes would be managed by two daemons at once.
+[[mount-dir]]
+host = "${HOME}/distrobox/privbox/nix"
+container = "/nix"
+options = "rw,z"
+
 # Files/sockets — must already exist, appended to additional_flags as --volume
 [[mount-file]]
 host = "${XDG_RUNTIME_DIR}/podman/podman.sock"
