@@ -643,6 +643,50 @@ _doctor_check_editor() {
     esac
 }
 
+# Nix keeps its store, database and every profile under /nix. If that is not
+# the box.toml mount, nix works normally until the next recreate empties the
+# store and leaves ~/.nix-profile pointing at nothing — far from the cause. A
+# pacman install made inside a box lands here too: same symptom, same fix.
+# The mount (box.toml) and the /nix/store tmpfiles entry (image) ship apart,
+# like the sshd halves, so each mismatch gets its own hint.
+_doctor_check_nix() {
+    local box="$1" name="$2" declares_mount=no state
+    grep -qx 'container = "/nix"' "$REPO_ROOT/$box/box.toml" && declares_mount=yes
+    state="$(_box_exec "$box" "$name" sh -c '
+        if ! command -v nix >/dev/null; then echo absent
+        elif ! mountpoint -q /nix; then echo unmounted
+        elif [ ! -d /nix/store ]; then echo nostore
+        else echo ok
+        fi')"
+
+    case "$state:$declares_mount" in
+        absent:no)
+            ;;
+        absent:yes)
+            _doctor_fail "/nix mount declared but the image has no nix"
+            _doctor_hint "Image and box.toml disagree. Run: box upgrade $box"
+            ;;
+        unmounted:no)
+            _doctor_fail "nix is installed but /nix is not persisted — the next recreate empties the store"
+            _doctor_hint "Install nix in $box/Containerfile and add the /nix [[mount-dir]] to $box/box.toml."
+            ;;
+        unmounted:yes)
+            _doctor_fail "/nix mount declared but this container predates it — the store is in the writable layer"
+            _doctor_hint "Run: box assemble $box"
+            ;;
+        nostore:*)
+            _doctor_fail "/nix/store is missing — every nix command fails"
+            _doctor_hint "The image predates the tmpfiles entry that creates it. Run: box upgrade $box"
+            ;;
+        ok:*)
+            _doctor_ok "nix store persists across recreates"
+            ;;
+        *)
+            _doctor_warn "could not check nix"
+            ;;
+    esac
+}
+
 cmd_doctor() {
     local boxes box name status rflag
     if [[ $# -ge 1 ]]; then
@@ -665,6 +709,7 @@ cmd_doctor() {
         _doctor_check_pkg_edits "$box" "$name"
         _doctor_check_sshd "$box" "$name"
         _doctor_check_editor "$box" "$name"
+        _doctor_check_nix "$box" "$name"
         echo ""
     done
 
