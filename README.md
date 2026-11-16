@@ -10,7 +10,7 @@ Those boxes accept **keys only** — `PasswordAuthentication` and `KbdInteractiv
 
 Anything you edit in `/etc/ssh/sshd_config` inside a box is lost on the next `box upgrade`, `box assemble` or `box rescue` — all boxes set `replace = true`, so the container's writable layer is discarded. Persistent sshd changes belong in a `sshd_config.d` drop-in in `Containerfile.base` (see `10-box-auth.conf` and `10-box-host-keys.conf` there).
 
-Every image ships [`host-spawn`](https://github.com/1player/host-spawn) at a pinned version. distrobox needs it to run commands back on the host (`distrobox-host-exec`) and to import the host's display variables in its login profile, but it ships no binary of its own — it offers to download one into the container instead, which every recreate throws away. Baking it in keeps `command not found: host-spawn` out of your login shells.
+Every image ships [`host-spawn`](https://github.com/1player/host-spawn) at a pinned version. distrobox needs it to run commands back on the host (`distrobox-host-exec`) and to import the host's display variables in its login profile, but it ships no binary of its own — it offers to download one into the container instead, which every recreate throws away. Baking it in keeps `command not found: host-spawn` out of your login shells. To run a command on the host from a box, use `host-spawn <cmd>`: in `priv`/`work`, `distrobox-host-exec` fails with `dial unix /run/host//run/host/...` because it re-prefixes the host bus address the box already sets.
 
 These environments share trusted access to the host. Separate homes and tailnets
 do not provide a security boundary between work and private software. The host

@@ -91,6 +91,10 @@ export EDITOR
 # anything else by every zsh, and box-env.sh sorts before distrobox_profile.sh
 # in /etc/profile.d, so setting it here wins in both shells.
 #
+# Side effect: distrobox-host-exec prepends /run/host/ to this variable
+# unconditionally, so it dials /run/host//run/host/... and fails in init boxes.
+# Use host-spawn (which it wraps) instead; do not change this value to suit it.
+#
 # Pointing at the host's bus is also what makes xdg-desktop-portal work
 # (screen sharing, notifications); /etc/environment carries the same value for
 # desktop-launched apps, which bypass shell init entirely.

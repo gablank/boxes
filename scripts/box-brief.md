@@ -22,7 +22,11 @@ on a normal machine do not hold here.
   `$CONTAINER_ID` (and the prompt badge) tells you which box you are in.
 
 - **The host filesystem is read-only at `/run/host`.** To run a command on the
-  host, use `distrobox-host-exec <cmd>`. Container management — `distrobox`,
+  host, use `host-spawn <cmd>` (`--no-pty` when not interactive). Avoid
+  `distrobox-host-exec`: it fails in init boxes (`priv`, `work`) with
+  `dial unix /run/host//run/host/...` — do not "fix" that by overriding
+  `DBUS_SESSION_BUS_ADDRESS`. Under a sandbox that blocks unix sockets
+  `host-spawn` fails with `socket: operation not permitted`; run it unsandboxed. Container management — `distrobox`,
   the host's `podman`, and `box assemble|pull|enter|list|upgrade` — cannot run
   from inside a box; ask the user to run those on the host.
 
